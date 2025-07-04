@@ -50,3 +50,12 @@ build/
 # Personal notes (optional)
 notes.md
 personal-notes/
+
+# Task management - keep structure but ignore content
+tasks/2025/
+tasks/2024/
+tasks/archive/
+# Keep templates and documentation
+!tasks/README.md
+!tasks/templates/
+!tasks/templates/*

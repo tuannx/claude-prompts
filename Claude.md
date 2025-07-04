@@ -47,3 +47,9 @@ When user says "vibecode" or "!!!" or wants fast execution:
 2. **Implementation Phase** → Follow todo checklist
 3. **Security Check** → Run security validation prompt
 4. **Learning Phase** → Use explanation prompt for knowledge transfer
+
+## Task History Tracking
+- **Create task file** in `tasks/YYYY/MM/` for each new request
+- **Use template** from `tasks/templates/task-template.md`
+- **Archive monthly** to keep workspace clean
+- **Reference past tasks** for similar implementations
