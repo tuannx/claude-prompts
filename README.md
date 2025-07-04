@@ -8,7 +8,7 @@ This prompt system provides a structured workflow for using Claude as a coding a
 
 ```
 claude-prompts/
-├── Claude.md                    # Main setup rules (start here)
+├── CLAUDE.md                    # Main setup rules (start here)
 ├── prompts/
 │   ├── planning-mode.md         # For creating detailed plans
 │   ├── security-check.md        # Security validation
@@ -22,8 +22,16 @@ claude-prompts/
 
 ## 🚀 Quick Start Guide
 
+### 🔥 Vibecode Mode (Fast Flow)
+- Type `!!!` at the start of your request to activate vibecode mode
+- Claude will skip confirmations and execute immediately
+- Get results faster with less back-and-forth
+- Example: `!!! implement a todo list feature`
+
+## 📖 Standard Workflow
+
 ### Step 1: Initial Setup
-1. **Copy `Claude.md`** content and paste into new Claude session
+1. **Copy `CLAUDE.md`** content and paste into new Claude session
 2. **Describe your project** briefly to establish context
 3. **Switch to planning mode** using `Shift + Tab` (prefer Opus 4)
 
@@ -34,7 +42,7 @@ claude-prompts/
 4. **End planning session** with `/cancel`
 
 ### Step 3: Implementation Phase
-1. **Start new session** with `Claude.md` rules
+1. **Start new session** with `CLAUDE.md` rules
 2. **Reference your todo.md** file for task list
 3. **Work through tasks** one by one, updating progress
 4. **Keep changes minimal** and focused on single files
@@ -72,7 +80,7 @@ cp templates/todo-template.md tasks/todo.md
 ### Implementation Commands
 ```bash
 # Start implementation session
-cat Claude.md
+cat CLAUDE.md
 
 # Update progress
 # ✅ Mark completed tasks in todo.md
@@ -161,7 +169,7 @@ cat prompts/learning-explanation.md
 
 ### If Claude seems confused or unfocused
 1. **End current session** with `/cancel`
-2. **Start fresh session** with `Claude.md` rules
+2. **Start fresh session** with `CLAUDE.md` rules
 3. **Provide clear context** about current work
 4. **Reference existing todo.md** for continuity
 
