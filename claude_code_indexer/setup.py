@@ -18,7 +18,7 @@ def read_requirements():
 
 setup(
     name="claude-code-indexer",
-    version="1.2.0",
+    version="1.2.1",
     author="Tuan Nguyen",
     author_email="tuannguyen@duck.com",
     description="Code indexing tool using graph database for Claude Code Assistant",

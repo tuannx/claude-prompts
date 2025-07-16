@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claude-code-indexer"
-version = "1.2.0"
+version = "1.2.1"
 description = "Code indexing tool using graph database for Claude Code Assistant"
 readme = "README.md"
 license = {text = "MIT"}

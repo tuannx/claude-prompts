@@ -394,13 +394,37 @@ class CodeGraphIndexer:
                 pr_score = pagerank.get(node_id, 0.0)
                 
                 # Weighted importance score
-                importance_score = (
+                # Normalize scores for better distribution
+                node_type = self.nodes[node_id]['node_type']
+                
+                # Base score from centrality measures
+                base_score = (
                     0.4 * in_score +  # How many depend on this
                     0.2 * out_score + # Complexity
                     0.4 * pr_score    # Overall importance
                 )
                 
-                self.nodes[node_id]['importance_score'] = min(importance_score, 1.0)
+                # Boost scores based on node type
+                type_boost = {
+                    'class': 0.3,
+                    'function': 0.1,
+                    'method': 0.05,
+                    'file': 0.0,
+                    'import': 0.0
+                }.get(node_type, 0.0)
+                
+                # Boost for nodes with many connections
+                connection_boost = 0.0
+                if graph.in_degree(node_id) > 5:
+                    connection_boost = 0.2
+                elif graph.in_degree(node_id) > 2:
+                    connection_boost = 0.1
+                
+                # Calculate final score with boosts
+                importance_score = base_score + type_boost + connection_boost
+                
+                # Normalize to 0-1 range with better distribution
+                self.nodes[node_id]['importance_score'] = min(importance_score * 2, 1.0)
                 
                 # Add relevance tags
                 tags = []

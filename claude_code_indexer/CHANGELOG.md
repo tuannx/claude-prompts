@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.1] - 2024-01-16
+
+### Fixed
+- Fixed `--important` query returning no results due to low importance scores
+- Improved importance score calculation with type-based boosting
+- Added smart fallback to show classes and functions when no high-scoring nodes exist
+- Priority sorting now considers both node type and importance score
+
+### Changed
+- Classes get +0.3 importance boost
+- Functions get +0.1 importance boost  
+- Nodes with many connections get additional boost
+- Importance scores are now normalized better (multiplied by 2)
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 

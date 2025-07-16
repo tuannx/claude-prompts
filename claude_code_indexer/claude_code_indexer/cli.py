@@ -210,7 +210,22 @@ def query(important, type, limit, db):
     
     if important:
         console.print("🔍 [bold blue]Most important code entities:[/bold blue]")
-        nodes = indexer.query_important_nodes(min_score=0.1, limit=limit)
+        # Get all nodes first, then take top by importance
+        all_nodes = indexer.query_important_nodes(min_score=0.0, limit=1000)
+        
+        # Sort by importance score, but prioritize classes and functions
+        def sort_key(node):
+            type_priority = {
+                'class': 1000,
+                'function': 100,
+                'method': 10,
+                'file': 1,
+                'import': 0
+            }.get(node['node_type'], 0)
+            return node['importance_score'] + type_priority
+        
+        # Sort by combined score and take top N
+        nodes = sorted(all_nodes, key=sort_key, reverse=True)[:limit]
     else:
         console.print("📋 [bold blue]All code entities:[/bold blue]")
         nodes = indexer.query_important_nodes(min_score=0.0, limit=limit)
@@ -219,8 +234,15 @@ def query(important, type, limit, db):
         nodes = [n for n in nodes if n['node_type'] == type]
     
     if not nodes:
-        console.print("No entities found matching criteria.")
-        return
+        if important:
+            console.print("⚠️  No high-importance entities found. Showing top entities by score...")
+            # Fallback: get any nodes sorted by importance
+            nodes = indexer.query_important_nodes(min_score=0.0, limit=limit)
+            if nodes:
+                console.print(f"ℹ️  Highest score: {nodes[0]['importance_score']:.3f}")
+        else:
+            console.print("No entities found matching criteria.")
+            return
     
     # Create table
     table = Table(show_header=True, header_style="bold magenta")
