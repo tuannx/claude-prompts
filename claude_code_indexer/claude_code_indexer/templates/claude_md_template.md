@@ -50,6 +50,82 @@ claude-code-indexer stats              # View statistics
 4. **After changes** → Re-run `claude-code-indexer index .` (uses cache, very fast)
 5. **For debugging** → Use `claude-code-indexer query --related <component>` to trace dependencies
 
+## 🏗️ Engineering Principles & Patterns
+
+### MANDATORY: Apply These Principles in Order
+
+#### 1. **KISS (Keep It Simple, Stupid)** - ALWAYS FIRST
+```python
+# ❌ BAD: Over-engineered
+class AbstractFactoryManager:
+    # 100 lines for reading a file...
+
+# ✅ GOOD: Simple and direct  
+def read_file(path):
+    with open(path) as f:
+        return f.read()
+```
+
+#### 2. **ReAct Pattern** - Think Before Code
+```python
+"""
+REASONING: Need user authentication
+- Option 1: Build custom - Complex, time-consuming
+- Option 2: Use library - Fast, tested
+DECISION: Use established library (bcrypt)
+
+ACTION: Implement using bcrypt
+"""
+def hash_password(password):
+    return bcrypt.hash(password)
+```
+
+#### 3. **SOLID Principles**
+- **S**ingle Responsibility: One class, one purpose
+- **O**pen/Closed: Extend, don't modify
+- **L**iskov Substitution: Subtypes must substitute
+- **I**nterface Segregation: Small, specific interfaces
+- **D**ependency Inversion: Depend on abstractions
+
+#### 4. **DRY (Don't Repeat Yourself)**
+Extract common patterns, but don't over-abstract
+
+#### 5. **OOP Best Practices**
+- Encapsulation: Hide internal state
+- Composition > Inheritance
+- Program to interfaces
+
+#### 6. **DDD (Domain-Driven Design)**
+- Rich domain models with business logic
+- Value objects for concepts
+- Repositories for data access
+
+#### 7. **EARS Requirements**
+```
+[WHEN <trigger>] [WHERE <state>] 
+the <system> SHALL <action> [WITHIN <performance>]
+```
+
+### 📋 Quick Decision Framework
+
+| Situation | Apply | Why |
+|-----------|-------|-----|
+| Starting new feature | KISS | Simplest solution first |
+| Complex logic | ReAct | Document reasoning |
+| Repeated code | DRY | Extract common parts |
+| Growing classes | SOLID | Split responsibilities |
+| Business complexity | DDD | Model the domain |
+| Unclear requirements | EARS | Formalize needs |
+
+### 🚀 Implementation Checklist
+Before coding ANY feature:
+- [ ] Requirements clear? (EARS)
+- [ ] Simplest approach? (KISS)
+- [ ] Reasoning documented? (ReAct)
+- [ ] Single responsibility? (SOLID)
+- [ ] No duplication? (DRY)
+- [ ] Domain modeled? (DDD)
+
 ### What It Does
 - **Automatically indexes** Python code using AST parsing
 - **Builds graph database** with NetworkX for relationships
