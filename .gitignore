@@ -59,3 +59,5 @@ tasks/archive/
 !tasks/README.md
 !tasks/templates/
 !tasks/templates/*
+# Claude Code Indexer
+code_index.db

@@ -1,3 +1,175 @@
+# Claude Coding Assistant - Setup Rules
+
+## 🚀 MANDATORY: Start Every Session with Code Indexing
+
+### ⚡ FIRST THING TO DO IN EVERY SESSION:
+```bash
+# 1. Check if project is indexed (takes 0.1s)
+claude-code-indexer stats
+
+# 2. If not indexed or outdated, run indexing (uses cache, very fast)
+claude-code-indexer index . --workers 4
+
+# 3. Load project context into memory
+claude-code-indexer query --important --limit 20
+```
+
+### 📊 Why This is CRITICAL:
+- **64.6x faster** than reading files manually (0.07s vs 4.66s)
+- **Instant understanding** of project structure and relationships
+- **Smart prioritization** - See most important code first
+- **Change awareness** - Know what was modified since last session
+- **Pattern detection** - Understand architecture and design patterns
+- **Dependency mapping** - See how components connect
+
+## 🎯 Session Workflow with Code Indexer
+
+### 1. **Session Start (ALWAYS DO THIS)**
+```bash
+# Get project overview
+claude-code-indexer stats
+
+# See key components
+claude-code-indexer query --important --limit 15
+
+# Check recent changes
+claude-code-indexer query --recent --limit 10
+```
+
+### 2. **Before Any Task**
+```bash
+# Search for relevant code
+claude-code-indexer search "<feature_name>"
+
+# Find related components
+claude-code-indexer query --related "<component>"
+
+# Check design patterns
+claude-code-indexer query --patterns
+```
+
+### 3. **During Development**
+```bash
+# After making changes, re-index (instant with cache)
+claude-code-indexer index . 
+
+# Verify impact of changes
+claude-code-indexer query --dependencies "<changed_file>"
+```
+
+## 🛠️ Core Workflow Rules
+
+### With Code Indexer Integration:
+1. **First, run `claude-code-indexer stats`** to understand the project
+2. **Think through the problem** using indexed data for context
+3. **Read specific files** only when needed (indexer shows which ones)
+4. **Write a plan** based on graph analysis and importance scores
+5. **Make changes** with full awareness of dependencies
+6. **Re-index after changes** to maintain accurate context
+
+## 📈 Performance Benefits
+
+### Traditional Approach:
+- Read multiple files: 5-10 seconds
+- Search for code: 2-5 seconds per search
+- Understand relationships: Manual analysis
+- Find important code: Trial and error
+
+### With Code Indexer:
+- Load full context: 0.1 seconds (cached)
+- Search anything: 0.05 seconds
+- See relationships: Instant graph view
+- Find important code: PageRank-sorted
+
+## 🔍 Smart Code Search Examples
+
+```bash
+# Find all authentication-related code
+claude-code-indexer search "auth"
+
+# Find all database models
+claude-code-indexer query --type class --path "**/models.py"
+
+# Find most complex functions (high outgoing edges)
+claude-code-indexer query --complex --type function
+
+# Find unused code (no incoming edges)
+claude-code-indexer query --unused
+
+# Find test coverage
+claude-code-indexer query --type test --stats
+```
+
+## 💡 Advanced Usage for Complex Tasks
+
+### Refactoring:
+```bash
+# Find all dependencies before refactoring
+claude-code-indexer query --dependencies "module_to_refactor.py"
+
+# Check impact radius
+claude-code-indexer query --impact "ClassName"
+```
+
+### Debugging:
+```bash
+# Trace call paths
+claude-code-indexer query --call-path "function_name"
+
+# Find related errors
+claude-code-indexer search "error" --context 5
+```
+
+### Architecture Analysis:
+```bash
+# View design patterns
+claude-code-indexer query --patterns --stats
+
+# Check coupling metrics
+claude-code-indexer stats --coupling
+
+# Find circular dependencies
+claude-code-indexer query --circular
+```
+
+## ⚠️ Important Notes
+
+### Performance Optimization:
+- **Always use cache** - 64.6x faster for re-indexing
+- **Use parallel workers** - `--workers 4` for faster initial indexing
+- **Incremental updates** - Only changed files are re-processed
+- **Query limits** - Use `--limit` to avoid information overload
+
+### Best Practices:
+- **Index at session start** - Ensures fresh context
+- **Re-index after major changes** - Maintains accuracy
+- **Use search instead of grep** - Graph-aware results
+- **Trust importance scores** - PageRank knows what matters
+
+### Integration with Claude Code:
+- **Automatically installed** when you run any command
+- **Updates CLAUDE.md** on first init
+- **Preserves existing rules** while adding indexing
+- **Works alongside** your existing workflow
+
+## 🚨 DO NOT:
+- **Skip initial indexing** - You'll miss critical context
+- **Use grep/find** - Use `claude-code-indexer search` instead
+- **Read files randomly** - Let importance scores guide you
+- **Ignore cache** - It's 64.6x faster!
+- **Re-implement indexing** - It's already done and optimized!
+
+## 📊 Expected Performance:
+- **First index**: 2-20 seconds depending on project size
+- **Cached index**: 0.05-1 second (64.6x faster)
+- **Queries**: 0.01-0.1 seconds
+- **Search**: 0.05-0.2 seconds
+- **Cache hit rate**: 95-100% in normal development
+
+---
+
+Remember: **ALWAYS start with `claude-code-indexer stats`** - it's the difference between coding blind and coding with full project awareness!
+
 ## Code Indexing with Graph Database
 
 ### 🚀 START EVERY SESSION: Load Project Context First!
