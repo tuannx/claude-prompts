@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from typing import Optional, Dict, Any
 import threading
 import time
+from .logger import log_info
 
 
 class OptimizedDatabase:
@@ -110,7 +111,7 @@ class DatabaseBenchmark:
     @staticmethod
     def benchmark_insert_performance(db_path: str, num_records: int = 1000):
         """Benchmark insert performance"""
-        print(f"🔥 Benchmarking {num_records} records...")
+        log_info(f"🔥 Benchmarking {num_records} records...")
         
         # Test standard sqlite3
         start_time = time.time()
@@ -150,9 +151,9 @@ class DatabaseBenchmark:
         except:
             pass
         
-        print(f"📊 SQLite3: {sqlite3_time:.2f}s")
-        print(f"📊 Optimized: {optimized_time:.2f}s")
-        print(f"🚀 Speedup: {sqlite3_time/optimized_time:.1f}x faster")
+        log_info(f"📊 SQLite3: {sqlite3_time:.2f}s")
+        log_info(f"📊 Optimized: {optimized_time:.2f}s")
+        log_info(f"🚀 Speedup: {sqlite3_time/optimized_time:.1f}x faster")
         
         return sqlite3_time, optimized_time
 
@@ -164,6 +165,6 @@ def time_it(func):
         start = time.time()
         result = func(*args, **kwargs)
         end = time.time()
-        print(f"⏱️  {func.__name__}: {end - start:.2f}s")
+        log_info(f"⏱️  {func.__name__}: {end - start:.2f}s")
         return result
     return wrapper

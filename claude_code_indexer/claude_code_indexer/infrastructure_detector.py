@@ -8,6 +8,7 @@ import re
 from typing import Dict, List, Set, Optional, Tuple
 from dataclasses import dataclass
 import json
+from .logger import log_warning
 
 
 @dataclass
@@ -198,7 +199,7 @@ class InfrastructureDetector:
             infrastructure['configuration'] = self._detect_configuration(tree, file_content)
         except (AttributeError, TypeError) as e:
             # Handle malformed AST gracefully
-            print(f"Warning: Could not detect infrastructure in {file_path}: {e}")
+            log_warning(f"Could not detect infrastructure in {file_path}: {e}")
         
         return infrastructure
     

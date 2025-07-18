@@ -8,6 +8,7 @@ import re
 from typing import Dict, List, Set, Optional, Tuple
 from dataclasses import dataclass
 import json
+from .logger import log_warning
 
 
 @dataclass
@@ -146,7 +147,7 @@ class LibraryDetector:
                 )
         except (AttributeError, TypeError) as e:
             # Handle malformed AST gracefully
-            print(f"Warning: Could not detect libraries in {file_path}: {e}")
+            log_warning(f"Could not detect libraries in {file_path}: {e}")
         
         return libraries
     

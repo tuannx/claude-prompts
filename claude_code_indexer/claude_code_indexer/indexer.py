@@ -20,14 +20,34 @@ from .weight_calculator import WeightCalculator
 from .db_optimizer import OptimizedDatabase, time_it
 from .parallel_processor import ParallelFileProcessor, ProcessingStats
 from .cache_manager import CacheManager, IncrementalIndexer
+from .logger import log_info, log_warning, log_error
+from .ignore_handler import IgnoreHandler
+from .parsers import create_default_parser, ParseResult
+from .storage_manager import get_storage_manager
 
 
 class CodeGraphIndexer:
     """Main code indexing class using Ensmallen graph database"""
     
-    def __init__(self, db_path: str = "code_index.db", use_cache: bool = True, 
-                 parallel_workers: int = None, enable_optimizations: bool = True):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None, use_cache: bool = True, 
+                 parallel_workers: int = None, enable_optimizations: bool = True,
+                 project_path: Path = None):
+        # Use centralized storage manager
+        self.storage_manager = get_storage_manager()
+        
+        # Determine project path
+        if project_path:
+            self.project_path = Path(project_path)
+        else:
+            self.project_path = self.storage_manager.get_project_from_cwd()
+        
+        # Get database path from storage manager
+        if db_path:
+            # Allow override for backward compatibility
+            self.db_path = db_path
+        else:
+            self.db_path = str(self.storage_manager.get_database_path(self.project_path))
+        
         self.nodes = {}  # node_id -> node_info
         self.edges = []  # List of (source, target, edge_type)
         self.node_counter = 0
@@ -37,16 +57,23 @@ class CodeGraphIndexer:
         self.weight_calculator = WeightCalculator()
         self.all_files_content = {}  # Store file contents for weight calculation
         
+        # Multi-language parser system
+        self.parser = create_default_parser()
+        
         # Performance optimizations
         self.use_cache = use_cache
         self.enable_optimizations = enable_optimizations
         
+        # Logging and debugging
+        self.verbose = False
+        self.parsing_errors = []
+        
         if self.use_cache:
-            self.cache_manager = CacheManager()
+            self.cache_manager = CacheManager(project_path=self.project_path)
             self.incremental_indexer = IncrementalIndexer(self.cache_manager)
         
         if self.enable_optimizations:
-            self.optimized_db = OptimizedDatabase(db_path)
+            self.optimized_db = OptimizedDatabase(self.db_path)
         
         self.parallel_processor = ParallelFileProcessor(max_workers=parallel_workers)
         self.processing_stats = ProcessingStats()
@@ -74,6 +101,9 @@ class CodeGraphIndexer:
             weight REAL,
             frequency_score REAL,
             usage_stats TEXT,
+            language TEXT DEFAULT 'python',
+            line_number INTEGER DEFAULT 0,
+            column_number INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         ''')
@@ -174,7 +204,7 @@ class CodeGraphIndexer:
                         edge_type
                     ))
         except Exception as e:
-            print(f"Warning: Failed to integrate cached result for {cached_result.file_path}: {e}")
+            log_warning(f"Failed to integrate cached result for {cached_result.file_path}: {e}")
     
     def _integrate_processing_result(self, result):
         """Integrate parallel processing result into current indexing session"""
@@ -204,6 +234,63 @@ class CodeGraphIndexer:
                     edge_type
                 ))
     
+    def parse_code_file(self, file_path: str) -> Dict:
+        """Parse a code file using the appropriate language parser"""
+        if self.verbose:
+            log_info(f"Parsing {file_path}...")
+            
+        # Use the new multi-language parser
+        parse_result = self.parser.parse_file(file_path)
+        
+        if not parse_result.success:
+            error_msg = f"Failed to parse {file_path}: {parse_result.error_message}"
+            log_warning(error_msg)
+            self.parsing_errors.append(error_msg)
+            return {}
+            
+        if self.verbose and parse_result.error_message:
+            # Partial success with warnings
+            self.parsing_errors.append(f"Warnings in {file_path}: {parse_result.error_message}")
+        
+        # Convert parser nodes to indexer format
+        # Keep a mapping from parser node IDs to indexer node IDs
+        parser_to_indexer_id = {}
+        
+        for parser_node_id, parser_node in parse_result.nodes.items():
+            # Map parser node to indexer node format
+            indexer_node = {
+                'id': self.node_counter,
+                'node_type': parser_node.node_type,
+                'name': parser_node.name,
+                'path': parser_node.path,
+                'summary': parser_node.summary,
+                'importance_score': 0.0,
+                'relevance_tags': [],
+                'language': parser_node.language,
+                'line_number': parser_node.line_number,
+                'column_number': parser_node.column_number
+            }
+            
+            # Add language-specific attributes
+            if parser_node.attributes:
+                indexer_node.update(parser_node.attributes)
+            
+            # Store the mapping
+            parser_to_indexer_id[parser_node_id] = self.node_counter
+            
+            self.nodes[self.node_counter] = indexer_node
+            self.node_counter += 1
+        
+        # Convert parser relationships to indexer format using the mapping
+        for relationship in parse_result.relationships:
+            source_id = parser_to_indexer_id.get(relationship.source_id)
+            target_id = parser_to_indexer_id.get(relationship.target_id)
+            
+            if source_id is not None and target_id is not None:
+                self.edges.append((source_id, target_id, relationship.relationship_type))
+        
+        return self.nodes
+    
     def parse_python_file(self, file_path: str) -> Dict:
         """Parse a Python file and extract code entities"""
         try:
@@ -219,7 +306,7 @@ class CodeGraphIndexer:
                 except UnicodeDecodeError:
                     continue
             else:
-                print(f"Warning: Could not decode {file_path}, skipping")
+                log_warning(f"Could not decode {file_path}, skipping")
                 return {}
         
         # Store content for weight calculation
@@ -227,13 +314,13 @@ class CodeGraphIndexer:
         
         # Check for null bytes (binary files)
         if '\x00' in content:
-            print(f"Warning: Binary file detected {file_path}, skipping")
+            log_warning(f"Binary file detected {file_path}, skipping")
             return {}
         
         try:
             tree = ast.parse(content)
         except (SyntaxError, ValueError) as e:
-            print(f"Warning: Cannot parse {file_path}: {e}")
+            log_warning(f"Cannot parse {file_path}: {e}")
             return {}
         
         # Create file node
@@ -354,7 +441,20 @@ class CodeGraphIndexer:
         
         # Save to temporary file
         edges_df = pd.DataFrame(edges_data, columns=["source", "destination"])
-        temp_file = "temp_edges.tsv"
+        
+        # Always use home directory for temp files to avoid permission issues
+        # This is especially important for MCP servers and read-only environments
+        try:
+            temp_dir = Path.home() / '.claude_code_indexer' / 'temp'
+            temp_dir.mkdir(exist_ok=True, parents=True)
+            temp_file = str(temp_dir / f"temp_edges_{os.getpid()}_{int(time.time() * 1000)}.tsv")
+        except (OSError, PermissionError):
+            # Final fallback: use system temp directory
+            import tempfile
+            temp_file = tempfile.mktemp(suffix='.tsv', prefix='temp_edges_')
+            
+        # Add debug logging to understand the actual file path being used
+        log_info(f"Creating temp file: {temp_file}")
         edges_df.to_csv(temp_file, index=False, sep="\t", header=False)
         
         try:
@@ -366,7 +466,7 @@ class CodeGraphIndexer:
             )
             return graph
         except Exception as e:
-            print(f"Warning: Could not create Ensmallen graph: {e}")
+            log_warning(f"Could not create Ensmallen graph: {e}")
             return None
         finally:
             # Clean up
@@ -434,7 +534,8 @@ class CodeGraphIndexer:
                     tags.append('highly-used')
                 if graph.out_degree(node_id) > 3:
                     tags.append('complex')
-                if 'test' in self.nodes[node_id]['name'].lower():
+                node_name = self.nodes[node_id].get('name', '')
+                if node_name and 'test' in node_name.lower():
                     tags.append('test')
                 if self.nodes[node_id]['node_type'] == 'file':
                     tags.append('module')
@@ -450,7 +551,7 @@ class CodeGraphIndexer:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
         except sqlite3.Error as e:
-            print(f"❌ Error connecting to database: {e}")
+            log_error(f"Error connecting to database: {e}")
             return False
         
         try:
@@ -460,14 +561,14 @@ class CodeGraphIndexer:
                 try:
                     cursor.execute(f"DELETE FROM {table}")
                 except sqlite3.Error as e:
-                    print(f"Warning: Could not clear table {table}: {e}")
+                    log_warning(f"Could not clear table {table}: {e}")
             
             # Insert nodes with error handling
             for node_id, node_info in self.nodes.items():
                 try:
                     cursor.execute('''
-                    INSERT INTO code_nodes (id, node_type, name, path, summary, importance_score, relevance_tags, weight, frequency_score, usage_stats)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO code_nodes (id, node_type, name, path, summary, importance_score, relevance_tags, weight, frequency_score, usage_stats, language, line_number, column_number)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         node_info['id'],
                         node_info['node_type'],
@@ -478,10 +579,13 @@ class CodeGraphIndexer:
                         json.dumps(node_info['relevance_tags']),
                         node_info.get('weight', 0.0),
                         node_info.get('frequency_score', 0.0),
-                        json.dumps(node_info.get('usage_stats', {}))
+                        json.dumps(node_info.get('usage_stats', {})),
+                        node_info.get('language', 'python'),
+                        node_info.get('line_number', 0),
+                        node_info.get('column_number', 0)
                     ))
                 except sqlite3.Error as e:
-                    print(f"Warning: Could not insert node {node_id}: {e}")
+                    log_warning(f"Could not insert node {node_id}: {e}")
                     # Try fallback insertion without new columns
                     try:
                         cursor.execute('''
@@ -497,7 +601,7 @@ class CodeGraphIndexer:
                             json.dumps(node_info['relevance_tags'])
                         ))
                     except sqlite3.Error as fallback_error:
-                        print(f"Error: Could not insert node {node_id} even with fallback: {fallback_error}")
+                        log_error(f"Could not insert node {node_id} even with fallback: {fallback_error}")
         
             # Insert edges with error handling
             for source, target, edge_type in self.edges:
@@ -507,7 +611,7 @@ class CodeGraphIndexer:
                     VALUES (?, ?, ?, ?)
                     ''', (source, target, edge_type, 1.0))
                 except sqlite3.Error as e:
-                    print(f"Warning: Could not insert edge {source}->{target}: {e}")
+                    log_warning(f"Could not insert edge {source}->{target}: {e}")
             
             # Update metadata with error handling
             metadata_updates = [
@@ -530,17 +634,17 @@ class CodeGraphIndexer:
                         VALUES (?, ?)
                         ''', (key, value))
                 except sqlite3.Error as e:
-                    print(f"Warning: Could not update metadata {key}: {e}")
+                    log_warning(f"Could not update metadata {key}: {e}")
             
             conn.commit()
-            print("✅ Data saved successfully")
+            log_info("✅ Data saved successfully")
             return True
             
         except sqlite3.Error as e:
-            print(f"❌ Database error during save: {e}")
+            log_error(f"Database error during save: {e}")
             return False
         except Exception as e:
-            print(f"❌ Unexpected error during save: {e}")
+            log_error(f"Unexpected error during save: {e}")
             return False
         finally:
             try:
@@ -549,43 +653,74 @@ class CodeGraphIndexer:
                 pass
     
     @time_it
-    def index_directory(self, directory: str, patterns: List[str] = None, force_reindex: bool = False):
-        """Index all Python files in a directory with performance optimizations"""
+    def index_directory(self, directory: str, patterns: List[str] = None, 
+                       force_reindex: bool = False, custom_ignore: List[str] = None):
+        """Index all supported code files in a directory with performance optimizations
+        
+        Args:
+            directory: Directory to index
+            patterns: File patterns to include (default: auto-detect from supported languages)
+            force_reindex: Force re-indexing all files
+            custom_ignore: Additional ignore patterns beyond .gitignore
+        """
         if patterns is None:
-            patterns = ["*.py"]
+            # Auto-generate patterns from supported extensions
+            extensions = self.parser.get_supported_extensions()
+            patterns = [f"*{ext}" for ext in extensions]
         
         start_time = time.time()
         
-        # Collect all Python files
+        # Initialize ignore handler
+        ignore_handler = IgnoreHandler(directory, custom_ignore)
+        
+        # Collect all supported code files
         all_files = []
         for pattern in patterns:
             for file_path in Path(directory).rglob(pattern):
                 if file_path.is_file():
-                    all_files.append(str(file_path))
+                    file_str = str(file_path)
+                    # Only include files that can be parsed
+                    if self.parser.can_parse(file_str):
+                        all_files.append(file_str)
+        
+        # Filter out ignored files
+        all_files = ignore_handler.filter_files(all_files)
         
         if not all_files:
-            print(f"No files found matching patterns {patterns} in {directory}")
+            log_info(f"No supported code files found matching patterns {patterns} in {directory} (after applying ignore rules)")
             return
         
-        print(f"🔍 Found {len(all_files)} Python files")
+        # Get language statistics
+        language_stats = {}
+        for file_path in all_files:
+            parse_result = self.parser.parse_file(file_path)
+            if parse_result.success:
+                lang = parse_result.language
+                if lang not in language_stats:
+                    language_stats[lang] = 0
+                language_stats[lang] += 1
+        
+        log_info(f"🔍 Found {len(all_files)} code files")
+        for lang, count in language_stats.items():
+            log_info(f"   📝 {lang}: {count} files")
         
         # Use incremental indexing if cache is enabled
         files_to_process = all_files
         cached_results = []
         
         if self.use_cache and not force_reindex:
-            print("📋 Checking cache for unchanged files...")
+            log_info("📋 Checking cache for unchanged files...")
             cached_files, files_to_process = self.incremental_indexer.get_files_to_process(all_files)
             
             if cached_files:
-                print(f"💾 Loading {len(cached_files)} files from cache")
+                log_info(f"💾 Loading {len(cached_files)} files from cache")
                 cached_results = self.incremental_indexer.load_cached_results(cached_files)
                 
                 # Integrate cached results
                 for cached_result in cached_results:
                     self._integrate_cached_result(cached_result)
             
-            print(f"🔄 Processing {len(files_to_process)} new/modified files")
+            log_info(f"🔄 Processing {len(files_to_process)} new/modified files")
         
         # Process files with parallel processing or sequentially
         if files_to_process:
@@ -608,21 +743,35 @@ class CodeGraphIndexer:
             else:
                 # Sequential processing for small number of files
                 for file_path in files_to_process:
-                    self.parse_python_file(file_path)
+                    parsed_nodes = self.parse_code_file(file_path)
+                    # The parse_code_file method already adds nodes to self.nodes
+                    # but we should also cache the result
+                    if self.use_cache and parsed_nodes:
+                        # Extract relevant data for caching
+                        file_nodes = {id: node for id, node in self.nodes.items() 
+                                     if node.get('path') == file_path}
+                        file_edges = [(s, t, type) for s, t, type in self.edges 
+                                     if s in file_nodes or t in file_nodes]
+                        
+                        # Cache the parsed result
+                        self.cache_manager.cache_file_result(
+                            file_path, file_nodes, file_edges,
+                            {}, {}, {}  # patterns, libraries, infrastructure
+                        )
         
         total_indexed = len(all_files)
         
         if total_indexed == 0:
-            print("No files to index")
+            log_info("No files to index")
             return
         
-        print("🔗 Building graph...")
+        log_info("🔗 Building graph...")
         graph = self.build_graph()
         
-        print("⚖️  Calculating importance scores...")
+        log_info("⚖️  Calculating importance scores...")
         self.calculate_importance_scores(graph)
         
-        print("📊 Calculating weights based on usage frequency...")
+        log_info("📊 Calculating weights based on usage frequency...")
         weighted_nodes, weighted_edges = self.weight_calculator.calculate_weights(
             self.nodes, self.edges, self.all_files_content
         )
@@ -631,23 +780,34 @@ class CodeGraphIndexer:
         for node_id, weighted_node in weighted_nodes.items():
             self.nodes[node_id].update(weighted_node)
         
-        print("💾 Saving to database...")
+        log_info("💾 Saving to database...")
         if not self.save_to_db():
-            print("❌ Failed to save data to database")
+            log_error("❌ Failed to save data to database")
             return False
         
         # Print performance stats
         processing_time = time.time() - start_time
         
-        print(f"\n✅ Indexing Complete!")
-        print(f"   📁 Total files: {total_indexed}")
-        print(f"   💾 From cache: {len(cached_results)}")
-        print(f"   🔄 Processed: {len(files_to_process)}")
-        print(f"   🔗 Nodes: {len(self.nodes)}")
-        print(f"   ↔️  Edges: {len(self.edges)}")
-        print(f"   ⏱️  Time: {processing_time:.2f}s")
-        print(f"   🚀 Speed: {total_indexed/processing_time:.1f} files/sec")
-        print(f"   💾 Database: {self.db_path}")
+        log_info(f"\n✅ Indexing Complete!")
+        log_info(f"   📁 Total files: {total_indexed}")
+        log_info(f"   💾 From cache: {len(cached_results)}")
+        log_info(f"   🔄 Processed: {len(files_to_process)}")
+        log_info(f"   🔗 Nodes: {len(self.nodes)}")
+        log_info(f"   ↔️  Edges: {len(self.edges)}")
+        log_info(f"   ⏱️  Time: {processing_time:.2f}s")
+        log_info(f"   🚀 Speed: {total_indexed/processing_time:.1f} files/sec")
+        log_info(f"   💾 Database: {self.db_path}")
+        
+        # Update project stats in storage manager
+        stats = {
+            'nodes': len(self.nodes),
+            'edges': len(self.edges),
+            'files': total_indexed,
+            'cached': len(cached_results),
+            'processed': len(files_to_process),
+            'time': processing_time
+        }
+        self.storage_manager.update_project_stats(self.project_path, stats)
         
         # Print processing stats if available
         if hasattr(self.processing_stats, 'print_stats') and files_to_process:
@@ -660,7 +820,7 @@ class CodeGraphIndexer:
         # Try to build Ensmallen graph for advanced features
         ensmallen_graph = self.build_ensmallen_graph()
         if ensmallen_graph:
-            print(f"✓ Ensmallen graph ready for advanced analysis")
+            log_info(f"✓ Ensmallen graph ready for advanced analysis")
     
     def query_important_nodes(self, min_score: float = 0.1, limit: int = 20) -> List[Dict]:
         """Query nodes with high importance scores"""
@@ -794,26 +954,29 @@ class CodeGraphIndexer:
             cursor.execute("PRAGMA table_info(code_nodes)")
             existing_columns = [column[1] for column in cursor.fetchall()]
             
-            # Add missing columns for v1.1.0
+            # Add missing columns for v1.1.0 and v1.6.0
             new_columns = {
                 'weight': 'REAL DEFAULT 0.0',
                 'frequency_score': 'REAL DEFAULT 0.0', 
-                'usage_stats': 'TEXT DEFAULT "{}"'
+                'usage_stats': 'TEXT DEFAULT "{}"',
+                'language': 'TEXT DEFAULT "python"',
+                'line_number': 'INTEGER DEFAULT 0',
+                'column_number': 'INTEGER DEFAULT 0'
             }
             
             for column_name, column_def in new_columns.items():
                 if column_name not in existing_columns:
                     try:
                         cursor.execute(f"ALTER TABLE code_nodes ADD COLUMN {column_name} {column_def}")
-                        print(f"✓ Added column '{column_name}' to code_nodes table")
+                        log_info(f"✓ Added column '{column_name}' to code_nodes table")
                     except sqlite3.Error as e:
-                        print(f"Warning: Could not add column '{column_name}': {e}")
+                        log_warning(f"Could not add column '{column_name}': {e}")
             
             # Migrate other tables if needed
             self._migrate_new_tables(cursor)
             
         except sqlite3.Error as e:
-            print(f"Warning: Database migration failed: {e}")
+            log_warning(f"Database migration failed: {e}")
     
     def _migrate_new_tables(self, cursor):
         """Create new tables introduced in v1.1.0"""
@@ -863,17 +1026,17 @@ class CodeGraphIndexer:
                 cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
                 if not cursor.fetchone():
                     cursor.execute(create_sql)
-                    print(f"✓ Created new table '{table_name}'")
+                    log_info(f"✓ Created new table '{table_name}'")
             except sqlite3.Error as e:
-                print(f"Warning: Could not create table '{table_name}': {e}")
+                log_warning(f"Could not create table '{table_name}': {e}")
     
     def _safe_database_operation(self, operation_func, *args, **kwargs):
         """Execute database operation with error handling"""
         try:
             return operation_func(*args, **kwargs)
         except sqlite3.Error as e:
-            print(f"Database error: {e}")
+            log_error(f"Database error: {e}")
             return None
         except Exception as e:
-            print(f"Unexpected error: {e}")
+            log_error(f"Unexpected error: {e}")
             return None

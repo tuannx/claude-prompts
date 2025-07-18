@@ -113,9 +113,13 @@ def init(force):
             console.print("❌ Initialization cancelled")
             return
     
-    # Create initial database
-    indexer = CodeGraphIndexer()
-    console.print("✓ Initialized code index database")
+    # Create initial database in centralized storage
+    from .storage_manager import get_storage_manager
+    storage = get_storage_manager()
+    project_path = storage.get_project_from_cwd()
+    
+    indexer = CodeGraphIndexer(project_path=project_path)
+    console.print(f"✓ Initialized code index database in {storage.app_home}")
     
     # Create .gitignore entry
     gitignore_path = cwd / ".gitignore"
@@ -143,19 +147,23 @@ def init(force):
 
 @cli.command()
 @click.argument('path', type=click.Path(exists=True))
-@click.option('--patterns', default="*.py", help='File patterns to index (comma-separated)')
-@click.option('--db', default="code_index.db", help='Database file path')
+@click.option('--patterns', default=None, 
+              help='File patterns to index (comma-separated) [default: auto-detect from supported languages]')
+@click.option('--db', default=None, help='Database file path (default: centralized storage)')
 @click.option('--no-cache', is_flag=True, help='Disable caching for faster re-indexing')
 @click.option('--force', is_flag=True, help='Force re-index all files (ignore cache)')
 @click.option('--workers', type=int, help='Number of parallel workers (default: auto)')
 @click.option('--no-optimize', is_flag=True, help='Disable database optimizations')
 @click.option('--benchmark', is_flag=True, help='Run performance benchmark')
-def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark):
+@click.option('--custom-ignore', multiple=True, help='Additional ignore patterns (can be used multiple times)')
+@click.option('--show-ignored', is_flag=True, help='Show what patterns are being ignored')
+@click.option('--verbose', is_flag=True, help='Show detailed parsing progress and errors')
+def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, custom_ignore, show_ignored, verbose):
     """Index source code in the specified directory with performance optimizations"""
     console.print(f"📁 [bold blue]Indexing code in {path}...[/bold blue]")
     
-    # Parse patterns
-    pattern_list = [p.strip() for p in patterns.split(',')]
+    # Parse patterns - use None to auto-detect from supported languages
+    pattern_list = None if patterns is None else [p.strip() for p in patterns.split(',')]
     
     # Show performance settings
     if not no_cache:
@@ -167,6 +175,20 @@ def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark):
     elif not no_optimize:
         console.print("⚡ [green]Auto parallel processing enabled[/green] - workers will be determined automatically")
     
+    # Show ignore patterns if requested
+    if show_ignored:
+        from .ignore_handler import IgnoreHandler
+        ignore_handler = IgnoreHandler(path, list(custom_ignore) if custom_ignore else None)
+        console.print("\n📝 [bold blue]Active Ignore Patterns:[/bold blue]")
+        patterns = ignore_handler.get_patterns()
+        console.print(f"Total patterns: {len(patterns)}")
+        console.print("\nTop patterns:")
+        for pattern in patterns[:20]:
+            console.print(f"  • {pattern}")
+        if len(patterns) > 20:
+            console.print(f"  ... and {len(patterns) - 20} more")
+        console.print()
+    
     # Run benchmark if requested
     if benchmark:
         from .db_optimizer import DatabaseBenchmark
@@ -174,11 +196,13 @@ def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark):
         DatabaseBenchmark.benchmark_insert_performance(db + "_benchmark")
     
     # Create indexer with performance options
+    project_path = Path(path).resolve()
     indexer = CodeGraphIndexer(
-        db_path=db,
+        db_path=db,  # Can be None to use centralized storage
         use_cache=not no_cache,
         parallel_workers=workers,
-        enable_optimizations=not no_optimize
+        enable_optimizations=not no_optimize,
+        project_path=project_path
     )
     
     # Index with progress
@@ -186,10 +210,25 @@ def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark):
         task = progress.add_task("Indexing files...", total=None)
         
         try:
-            indexer.index_directory(path, patterns=pattern_list, force_reindex=force)
+            # Pass verbose flag to indexer
+            indexer.verbose = verbose
+            indexer.index_directory(path, patterns=pattern_list, force_reindex=force, 
+                                  custom_ignore=list(custom_ignore) if custom_ignore else None)
             progress.update(task, completed=100)
+            
+            # Show parsing errors if verbose mode
+            if verbose and hasattr(indexer, 'parsing_errors') and indexer.parsing_errors:
+                console.print("\n⚠️  [yellow]Parsing Warnings:[/yellow]")
+                for error in indexer.parsing_errors[:10]:  # Show first 10 errors
+                    console.print(f"  • {error}")
+                if len(indexer.parsing_errors) > 10:
+                    console.print(f"  ... and {len(indexer.parsing_errors) - 10} more")
+                    
         except Exception as e:
             console.print(f"❌ [bold red]Error during indexing: {e}[/bold red]")
+            if verbose:
+                import traceback
+                console.print("[dim]" + traceback.format_exc() + "[/dim]")
             sys.exit(1)
     
     console.print(f"✅ [bold green]Indexing complete![/bold green]")
@@ -199,14 +238,32 @@ def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark):
 @click.option('--important', is_flag=True, help='Show only important nodes')
 @click.option('--type', help='Filter by node type (file, class, method, function)')
 @click.option('--limit', default=20, help='Maximum number of results')
-@click.option('--db', default="code_index.db", help='Database file path')
-def query(important, type, limit, db):
+@click.option('--db', default=None, help='Database file path (default: centralized storage)')
+@click.option('--project', help='Project name/path to query (default: current directory)')
+def query(important, type, limit, db, project):
     """Query indexed code entities"""
-    if not os.path.exists(db):
-        console.print("❌ [bold red]Database not found. Run 'claude-code-indexer index' first.[/bold red]")
-        sys.exit(1)
+    # Determine project path
+    from .storage_manager import get_storage_manager
+    storage = get_storage_manager()
     
-    indexer = CodeGraphIndexer(db_path=db)
+    if project:
+        # Find project by name or path
+        project_info = storage.find_project_by_name(project)
+        if project_info:
+            project_path = Path(project_info['path'])
+        else:
+            project_path = Path(project).resolve()
+    else:
+        project_path = storage.get_project_from_cwd()
+    
+    # Create indexer with project path
+    indexer = CodeGraphIndexer(db_path=db, project_path=project_path)
+    
+    # Check if database exists
+    actual_db_path = db or indexer.db_path
+    if not os.path.exists(actual_db_path):
+        console.print(f"❌ [bold red]Database not found for {project_path}. Run 'claude-code-indexer index' first.[/bold red]")
+        sys.exit(1)
     
     if important:
         console.print("🔍 [bold blue]Most important code entities:[/bold blue]")
@@ -267,34 +324,98 @@ def query(important, type, limit, db):
 
 
 @cli.command()
-@click.argument('term')
-@click.option('--db', default="code_index.db", help='Database file path')
-def search(term, db):
-    """Search for code entities by name"""
-    if not os.path.exists(db):
-        console.print("❌ [bold red]Database not found. Run 'claude-code-indexer index' first.[/bold red]")
+@click.argument('terms', nargs=-1, required=True)
+@click.option('--db', default=None, help='Database file path (default: centralized storage)')
+@click.option('--mode', type=click.Choice(['any', 'all']), default='any', help='Search mode: any (OR) or all (AND)')
+@click.option('--limit', default=20, help='Maximum number of results')
+@click.option('--type', type=click.Choice(['file', 'class', 'method', 'function', 'import', 'interface']), 
+              help='Filter by node type')
+@click.option('--project', help='Project name/path to search (default: current directory)')
+def search(terms, db, mode, limit, type, project):
+    """Search for code entities by name. Supports multiple keywords.
+    
+    Examples:
+        claude-code-indexer search auth
+        claude-code-indexer search auth user login --mode any
+        claude-code-indexer search database connection --mode all
+        claude-code-indexer search service firestore --type class --limit 10
+        claude-code-indexer search process --type function
+    """
+    # Determine project path
+    from .storage_manager import get_storage_manager
+    storage = get_storage_manager()
+    
+    if project:
+        # Find project by name or path
+        project_info = storage.find_project_by_name(project)
+        if project_info:
+            project_path = Path(project_info['path'])
+        else:
+            project_path = Path(project).resolve()
+    else:
+        project_path = storage.get_project_from_cwd()
+    
+    # Create indexer with project path
+    indexer = CodeGraphIndexer(db_path=db, project_path=project_path)
+    
+    # Check if database exists
+    actual_db_path = db or indexer.db_path
+    if not os.path.exists(actual_db_path):
+        console.print(f"❌ [bold red]Database not found for {project_path}. Run 'claude-code-indexer index' first.[/bold red]")
         sys.exit(1)
     
     import sqlite3
-    conn = sqlite3.connect(db)
+    conn = sqlite3.connect(actual_db_path)
     cursor = conn.cursor()
     
-    cursor.execute('''
+    # Build query based on mode
+    if mode == 'any':
+        # OR logic - match any keyword
+        conditions = []
+        params = []
+        for term in terms:
+            conditions.append("(name LIKE ? OR path LIKE ? OR summary LIKE ?)")
+            params.extend([f'%{term}%', f'%{term}%', f'%{term}%'])
+        where_clause = " OR ".join(conditions)
+    else:
+        # AND logic - must match all keywords
+        conditions = []
+        params = []
+        for term in terms:
+            conditions.append("(name LIKE ? OR path LIKE ? OR summary LIKE ?)")
+            params.extend([f'%{term}%', f'%{term}%', f'%{term}%'])
+        where_clause = " AND ".join(conditions)
+    
+    # Add type filter if specified
+    where_conditions = [f"({where_clause})"]
+    if type:
+        where_conditions.append("node_type = ?")
+        params.append(type)
+    
+    final_where_clause = " AND ".join(where_conditions)
+    
+    query = f'''
     SELECT name, node_type, path, importance_score, relevance_tags
     FROM code_nodes
-    WHERE name LIKE ? OR summary LIKE ?
+    WHERE {final_where_clause}
     ORDER BY importance_score DESC
-    LIMIT 20
-    ''', (f'%{term}%', f'%{term}%'))
+    LIMIT {limit}
+    '''
     
+    cursor.execute(query, params)
     results = cursor.fetchall()
     conn.close()
     
+    search_desc = ' '.join(terms)
+    filter_desc = f"mode: {mode}"
+    if type:
+        filter_desc += f", type: {type}"
+    
     if not results:
-        console.print(f"No entities found matching '{term}'")
+        console.print(f"No entities found matching '{search_desc}' ({filter_desc})")
         return
     
-    console.print(f"🔍 [bold blue]Search results for '{term}':[/bold blue]")
+    console.print(f"🔍 [bold blue]Search results for '{search_desc}' ({filter_desc}):[/bold blue]")
     
     table = Table(show_header=True, header_style="bold magenta")
     table.add_column("Name", style="bold")
@@ -314,22 +435,40 @@ def search(term, db):
 
 
 @cli.command()
-@click.option('--db', default="code_index.db", help='Database file path')
+@click.option('--db', default=None, help='Database file path (default: centralized storage)')
 @click.option('--cache', is_flag=True, help='Show cache statistics')
-def stats(db, cache):
+@click.option('--project', help='Project name/path for stats (default: current directory)')
+def stats(db, cache, project):
     """Show indexing statistics"""
-    if not os.path.exists(db):
-        console.print("❌ [bold red]Database not found. Run 'claude-code-indexer index' first.[/bold red]")
+    # Determine project path
+    from .storage_manager import get_storage_manager
+    storage = get_storage_manager()
+    
+    if project:
+        # Find project by name or path
+        project_info = storage.find_project_by_name(project)
+        if project_info:
+            project_path = Path(project_info['path'])
+        else:
+            project_path = Path(project).resolve()
+    else:
+        project_path = storage.get_project_from_cwd()
+    
+    # Create indexer with project path
+    indexer = CodeGraphIndexer(db_path=db, project_path=project_path)
+    
+    # Check if database exists
+    actual_db_path = db or indexer.db_path
+    if not os.path.exists(actual_db_path):
+        console.print(f"❌ [bold red]Database not found for {project_path}. Run 'claude-code-indexer index' first.[/bold red]")
         sys.exit(1)
     
     # Show cache stats if requested
     if cache:
         from .cache_manager import CacheManager
-        cache_manager = CacheManager()
+        cache_manager = CacheManager(project_path=project_path)
         cache_manager.print_cache_stats()
         console.print()  # Add spacing
-    
-    indexer = CodeGraphIndexer(db_path=db)
     stats = indexer.get_stats()
     
     console.print("📊 [bold blue]Code Indexing Statistics[/bold blue]")
@@ -429,10 +568,136 @@ def update(check_only):
             # Also sync CLAUDE.md after update
             updater.sync_claude_md()
             console.print("\n🎉 [bold green]Update complete![/bold green]")
-            console.print("Restart your terminal or run [bold]hash -r[/bold] to use the new version")
 
 
-@cli.command()
+@cli.group()
+def background():
+    """Manage background indexing service"""
+    pass
+
+
+@background.command()
+def start():
+    """Start the background indexing service"""
+    from .background_service import get_background_service
+    
+    service = get_background_service()
+    service.start()
+    
+    if service.is_running():
+        console.print("✅ [green]Background indexing service started successfully![/green]")
+    else:
+        console.print("❌ [red]Failed to start background indexing service[/red]")
+
+
+@background.command()
+def stop():
+    """Stop the background indexing service"""
+    from .background_service import get_background_service
+    
+    service = get_background_service()
+    service.stop()
+    console.print("✅ [green]Background indexing service stopped[/green]")
+
+
+@background.command()
+def restart():
+    """Restart the background indexing service"""
+    from .background_service import get_background_service
+    
+    service = get_background_service()
+    service.restart()
+    console.print("✅ [green]Background indexing service restarted[/green]")
+
+
+@background.command()
+def status():
+    """Show background indexing service status"""
+    from .background_service import get_background_service
+    
+    service = get_background_service()
+    status = service.get_status()
+    
+    console.print("\n📊 [bold blue]Background Indexing Service Status[/bold blue]\n")
+    
+    # General status
+    console.print(f"Enabled: {'✅ Yes' if status['enabled'] else '❌ No'}")
+    console.print(f"Running: {'✅ Yes' if status['running'] else '❌ No'}")
+    console.print(f"Default interval: {status['default_interval']}s ({status['default_interval'] / 60:.1f} minutes)")
+    
+    if status['projects']:
+        console.print("\n📁 [bold blue]Project Status:[/bold blue]")
+        
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Project", style="cyan")
+        table.add_column("Interval", style="green")
+        table.add_column("Last Indexed", style="yellow")
+        table.add_column("Next Index", style="blue")
+        table.add_column("Status", style="bold")
+        
+        for project_path, project_status in status['projects'].items():
+            interval_str = f"{project_status['interval']}s" if project_status['interval'] > 0 else "Disabled"
+            status_str = "🔄 Indexing..." if project_status['indexing'] else "⏸️  Waiting"
+            
+            # Show full path for managed projects
+            project_display = project_path if len(project_path) < 40 else "..." + project_path[-37:]
+            
+            table.add_row(
+                project_display,
+                interval_str,
+                project_status['last_indexed'][:16] + "…" if len(project_status['last_indexed']) > 16 else project_status['last_indexed'],
+                project_status['next_index'][:16] + "…" if len(project_status['next_index']) > 16 else project_status['next_index'],
+                status_str
+            )
+        
+        console.print(table)
+    else:
+        console.print("\n[dim]No projects configured for background indexing[/dim]")
+
+
+@background.command()
+@click.option('--enable/--disable', default=True, help='Enable or disable the service')
+def config(enable):
+    """Enable or disable background indexing service"""
+    from .background_service import get_background_service
+    
+    service = get_background_service()
+    
+    if enable:
+        service.enable()
+        console.print("✅ [green]Background indexing service enabled[/green]")
+    else:
+        service.disable()
+        console.print("❌ [yellow]Background indexing service disabled[/yellow]")
+
+
+@background.command()
+@click.option('--project', help='Project path (default: current directory)')
+@click.option('--interval', type=int, default=300, help='Interval in seconds (default: 300, -1 to disable)')
+def set_interval(project, interval):
+    """Set background indexing interval for a project"""
+    from .background_service import get_background_service
+    from .storage_manager import get_storage_manager
+    
+    service = get_background_service()
+    
+    if project:
+        # Set for specific project
+        project_path = Path(project).resolve()
+        if not project_path.exists():
+            console.print(f"❌ [red]Project path does not exist: {project}[/red]")
+            return
+        
+        service.set_project_interval(str(project_path), interval)
+        
+        if interval == -1:
+            console.print(f"❌ [yellow]Disabled background indexing for {project_path}[/yellow]")
+        else:
+            console.print(f"✅ [green]Set background indexing interval to {interval}s for {project_path}[/green]")
+    else:
+        # Set default interval
+        service.set_default_interval(interval)
+        console.print(f"✅ [green]Set default background indexing interval to {interval}s[/green]")
 def sync():
     """Sync CLAUDE.md with latest template"""
     updater = Updater()
@@ -440,6 +705,141 @@ def sync():
         console.print("✅ [bold green]CLAUDE.md synchronized![/bold green]")
     else:
         console.print("✓ CLAUDE.md is already up to date")
+
+
+@cli.group()
+def mcp():
+    """MCP (Model Context Protocol) management commands"""
+    pass
+
+
+@mcp.command("install")
+@click.option("--force", is_flag=True, help="Force installation even if Claude Desktop not found")
+def mcp_install(force):
+    """Install MCP server for Claude Desktop integration"""
+    from .mcp_installer import install_mcp
+    install_mcp(force=force)
+
+
+@mcp.command("uninstall")
+def mcp_uninstall():
+    """Remove MCP server from Claude Desktop"""
+    from .mcp_installer import uninstall_mcp
+    uninstall_mcp()
+
+
+@mcp.command("status")
+def mcp_status():
+    """Show MCP installation status"""
+    from .mcp_installer import show_mcp_status
+    show_mcp_status()
+
+
+@cli.command()
+@click.option('--all', is_flag=True, help='Show all projects including non-existent')
+def projects(all):
+    """List all indexed projects"""
+    from .storage_manager import get_storage_manager
+    storage = get_storage_manager()
+    
+    projects = storage.list_projects()
+    
+    if not projects:
+        console.print("📭 [yellow]No indexed projects found.[/yellow]")
+        console.print("Run 'claude-code-indexer index <path>' to index a project.")
+        return
+    
+    console.print("📚 [bold blue]Indexed Projects[/bold blue]")
+    
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Name", style="cyan")
+    table.add_column("Path", style="green")
+    table.add_column("Last Indexed", style="yellow")
+    table.add_column("Size", style="blue")
+    table.add_column("Status", style="white")
+    
+    for project in projects:
+        if not all and not project.get('exists', True):
+            continue
+            
+        name = project['name']
+        path = project['path']
+        last_indexed = project.get('last_indexed', 'Never')
+        if last_indexed and last_indexed != 'Never':
+            # Format date nicely
+            from datetime import datetime
+            dt = datetime.fromisoformat(last_indexed)
+            last_indexed = dt.strftime('%Y-%m-%d %H:%M')
+        
+        size = project.get('db_size', 0)
+        size_str = f"{size / 1024 / 1024:.1f} MB" if size > 0 else "-"
+        
+        status = "✓" if project.get('exists', True) else "✗ Missing"
+        
+        table.add_row(name, path, last_indexed, size_str, status)
+    
+    console.print(table)
+    
+    # Show storage stats
+    stats = storage.get_storage_stats()
+    console.print(f"\n💾 Storage: {stats['app_home']}")
+    console.print(f"   Total projects: {stats['project_count']}")
+    console.print(f"   Total size: {stats['total_size_mb']:.1f} MB")
+
+
+@cli.command()
+@click.argument('project', required=True)
+@click.option('--force', is_flag=True, help='Force removal without confirmation')
+def remove(project, force):
+    """Remove an indexed project"""
+    from .storage_manager import get_storage_manager
+    storage = get_storage_manager()
+    
+    # Find project
+    project_info = storage.find_project_by_name(project)
+    if not project_info:
+        # Try as path
+        project_path = Path(project).resolve()
+        if storage.get_project_id(project_path) in storage.metadata['projects']:
+            project_info = {
+                'path': str(project_path),
+                'name': project_path.name
+            }
+        else:
+            console.print(f"❌ [bold red]Project '{project}' not found.[/bold red]")
+            return
+    
+    # Confirm
+    if not force:
+        confirm = click.confirm(f"Remove index for '{project_info['name']}' ({project_info['path']})?")
+        if not confirm:
+            console.print("❌ Removal cancelled.")
+            return
+    
+    # Remove
+    removed = storage.remove_project(Path(project_info['path']))
+    if removed:
+        console.print(f"✅ [bold green]Removed index for '{project_info['name']}'[/bold green]")
+    else:
+        console.print(f"❌ [bold red]Failed to remove project.[/bold red]")
+
+
+@cli.command()
+def clean():
+    """Clean up orphaned project indexes"""
+    from .storage_manager import get_storage_manager
+    storage = get_storage_manager()
+    
+    console.print("🔍 [bold blue]Scanning for orphaned projects...[/bold blue]")
+    
+    removed = storage.clean_orphaned_projects()
+    
+    if removed:
+        console.print(f"✅ [bold green]Cleaned {len(removed)} orphaned projects:[/bold green]")
+        for path in removed:
+            console.print(f"   • {path}")
+    else:
+        console.print("✨ [green]No orphaned projects found.[/green]")
 
 
 def main():

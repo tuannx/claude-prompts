@@ -7,6 +7,7 @@ import ast
 import re
 from typing import Dict, List, Set, Optional
 from dataclasses import dataclass
+from .logger import log_warning
 
 
 @dataclass
@@ -44,7 +45,7 @@ class PatternDetector:
             patterns.extend(self._detect_mvc(tree, file_path))
         except (AttributeError, TypeError) as e:
             # Handle malformed AST gracefully
-            print(f"Warning: Could not detect patterns in {file_path}: {e}")
+            log_warning(f"Could not detect patterns in {file_path}: {e}")
         
         return patterns
     

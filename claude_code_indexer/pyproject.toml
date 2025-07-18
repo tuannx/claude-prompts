@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claude-code-indexer"
-version = "1.2.1"
-description = "Code indexing tool using graph database for Claude Code Assistant"
+version = "1.10.0"
+description = "Multi-language code indexing with graph database, supports Python/JavaScript/TypeScript/Java, auto-ignores node_modules/.git, respects .gitignore, multi-keyword search, MCP for Claude Desktop"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Tuan Nguyen", email = "tuannguyen@duck.com"}
+    {name = "Tony Nguyen", email = "tony@startupascent.net"}
 ]
 maintainers = [
-    {name = "Tuan Nguyen", email = "tuannguyen@duck.com"}
+    {name = "Tony Nguyen", email = "tony@startupascent.net"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -42,7 +42,10 @@ dependencies = [
     "click>=8.0.0",
     "rich>=13.0.0",
     "requests>=2.28.0",  # For auto-update feature
+    "packaging>=23.0",  # For version comparison
     "apsw>=3.40.0",  # Performance optimization
+    "psutil>=5.9.0",  # For background service process management
+    "javalang>=0.13.0",  # For Java AST parsing
 ]
 
 [project.urls]
@@ -55,6 +58,7 @@ Changelog = "https://github.com/tuannx/claude-prompts/blob/main/claude_code_inde
 [project.scripts]
 claude-code-indexer = "claude_code_indexer.cli:main"
 cci = "claude_code_indexer.cli:main"
+cci-mcp-server = "claude_code_indexer.mcp_server:main"
 
 [project.optional-dependencies]
 dev = [
@@ -66,9 +70,14 @@ dev = [
     "twine>=4.0",
     "build>=0.10",
 ]
+mcp = [
+    "mcp>=0.9.0",
+    "httpx>=0.25.0",
+    "pydantic>=2.0.0",
+]
 
 [tool.setuptools]
-packages = ["claude_code_indexer", "claude_code_indexer.templates"]
+packages = ["claude_code_indexer", "claude_code_indexer.templates", "claude_code_indexer.parsers"]
 include-package-data = true
 
 [tool.setuptools.package-data]

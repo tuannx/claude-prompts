@@ -38,15 +38,17 @@ claude-code-indexer init
 claude-code-indexer index . --workers 4
 
 # 4. Use the indexed data
-claude-code-indexer query --important  # Show key components
-claude-code-indexer search <term>      # Search for specific code
-claude-code-indexer stats              # View statistics
+claude-code-indexer query --important           # Show key components
+claude-code-indexer search auth user login      # Multi-keyword search
+claude-code-indexer search db conn --mode all   # AND search (match all keywords)
+claude-code-indexer stats                       # View statistics
+claude-code-indexer index . --show-ignored      # See what files are ignored
 ```
 
 ### 🎯 Recommended Workflow for Claude Code
 1. **Start session** → Run `claude-code-indexer stats` to see project overview
 2. **Before coding** → Run `claude-code-indexer query --important` to understand key components
-3. **When searching** → Use `claude-code-indexer search <term>` instead of grep/find
+3. **When searching** → Use `claude-code-indexer search <terms>` with multiple keywords
 4. **After changes** → Re-run `claude-code-indexer index .` (uses cache, very fast)
 5. **For debugging** → Use `claude-code-indexer query --related <component>` to trace dependencies
 
@@ -133,14 +135,18 @@ Before coding ANY feature:
 - **Stores in SQLite** for fast queries with APSW optimization
 - **Caches results** for 64.6x faster re-indexing
 - **Parallel processing** for large codebases
+- **Smart ignore patterns** - skips node_modules, .git, build files automatically (v1.5.0+)
+- **Respects .gitignore** and .dockerignore files (v1.5.0+)
+- **Multi-keyword search** with AND/OR logic (v1.3.0+)
 - **No implementation needed** - just use the CLI commands!
 
-### Performance Features (v1.2.0+)
+### Performance Features
 - **Smart caching** - Only re-indexes changed files
 - **Parallel processing** - Multi-worker AST parsing
 - **Database optimization** - APSW with connection pooling
 - **Incremental updates** - Hash-based change detection
 - **Memory efficient** - Streaming processing for large projects
+- **Intelligent filtering** - Auto-ignores non-source files (v1.5.0+)
 
 ### CLI Commands
 - `claude-code-indexer init` - Initialize in current directory
@@ -250,12 +256,22 @@ $ claude-code-indexer query --important --limit 10
 3. process_request (function) - score: 0.68
 ...
 
-# Search for specific functionality
-$ claude-code-indexer search "authentication"
-🔍 Search results for 'authentication':
+# Multi-keyword search (v1.3.0+)
+$ claude-code-indexer search auth user login
+🔍 Search results for 'auth user login' (mode: any):
 - auth.py: AuthenticationManager (class)
 - middleware.py: authenticate_user (function)
 - models.py: User.check_password (method)
+
+# Check what's being ignored (v1.5.0+)
+$ claude-code-indexer index . --show-ignored
+📝 Active Ignore Patterns:
+Total patterns: 45
+✅ Using .gitignore
+• node_modules/
+• __pycache__/
+• .git/
+... and 42 more
 ```
 
 ### Performance Benchmarks
@@ -265,3 +281,54 @@ $ claude-code-indexer search "authentication"
 - **Cache hit rate**: Typically 95-100% in development
 - **Memory usage**: ~50MB for 1000 files
 - **Database size**: ~1MB per 100 files indexed
+
+### 🤖 MCP Integration for Claude Desktop
+
+#### What is MCP?
+Model Context Protocol (MCP) allows Claude Desktop to directly use `claude-code-indexer` without CLI commands. It provides:
+- Direct integration with Claude Desktop
+- Automatic indexing when opening projects
+- GUI-based code exploration
+- Real-time code analysis
+
+#### Installation for Claude Desktop
+```bash
+# 1. Install with MCP support
+pip install "claude-code-indexer[mcp]"
+
+# 2. Auto-configure Claude Desktop (recommended)
+claude-code-indexer mcp install
+
+# Or manually add to Claude Desktop config:
+# ~/Library/Application Support/Claude/claude_desktop_config.json
+```
+
+#### MCP Configuration
+```json
+{
+  "mcpServers": {
+    "claude-code-indexer": {
+      "command": "cci-mcp-server",
+      "args": [],
+      "autoStart": true
+    }
+  }
+}
+```
+
+#### MCP Tools Available in Claude Desktop
+Once installed, Claude Desktop can use these tools directly:
+- **index_codebase(project_path)** - Index projects (auto-ignores node_modules, .git, etc)
+- **get_project_stats(project_path)** - View code statistics and overview
+- **query_important_code(project_path)** - Find most important components
+- **search_code(project_path, terms)** - Multi-keyword search with AND/OR logic
+- **manage_cache(project_path, action)** - Control indexing cache
+- **get_ignore_patterns(project_path)** - View what's being ignored (v1.5.0+)
+- **list_indexed_projects()** - See all indexed projects (v1.4.0+)
+
+#### Benefits of MCP Integration
+- **Zero friction** - No need to type CLI commands
+- **Auto-indexing** - Projects indexed when opened
+- **Rich UI** - Visual code exploration in Claude Desktop
+- **Faster workflow** - Direct access to code insights
+- **Session persistence** - Maintains context between chats

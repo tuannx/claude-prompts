@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "claude-code-indexer": {
+      "command": "cci-mcp-server",
+      "args": [],
+      "env": {},
+      "autoStart": true,
+      "capabilities": {
+        "tools": true,
+        "resources": true
+      }
+    }
+  }
+}

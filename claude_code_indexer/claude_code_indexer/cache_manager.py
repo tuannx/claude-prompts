@@ -13,6 +13,7 @@ from dataclasses import dataclass, asdict
 import pickle
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from .logger import log_info
 
 
 @dataclass
@@ -33,9 +34,23 @@ class FileCache:
 class CacheManager:
     """Manage file-level caching for faster re-indexing"""
     
-    def __init__(self, cache_dir: str = ".claude_cache"):
-        self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(exist_ok=True)
+    def __init__(self, project_path: Optional[Path] = None, cache_dir: Optional[str] = None):
+        # Use centralized storage manager
+        from .storage_manager import get_storage_manager
+        storage = get_storage_manager()
+        
+        if project_path:
+            # Use project-specific cache directory
+            self.cache_dir = storage.get_cache_dir(project_path)
+        elif cache_dir:
+            # Use provided cache directory (for backward compatibility)
+            self.cache_dir = Path(cache_dir)
+            self.cache_dir.mkdir(exist_ok=True, parents=True)
+        else:
+            # Default to current project
+            project_path = storage.get_project_from_cwd()
+            self.cache_dir = storage.get_cache_dir(project_path)
+        
         self.cache_db = self.cache_dir / "file_cache.db"
         self._init_cache_db()
     
@@ -199,7 +214,7 @@ class CacheManager:
             conn.commit()
             conn.close()
             
-            print(f"🗑️  Cleared {deleted_count} old cache entries")
+            log_info(f"🗑️  Cleared {deleted_count} old cache entries")
             
         except sqlite3.Error:
             pass
@@ -247,12 +262,12 @@ class CacheManager:
         """Print cache statistics"""
         stats = self.get_cache_stats()
         
-        print(f"💾 Cache Statistics:")
-        print(f"   Total entries: {stats['total_entries']}")
-        print(f"   Recent (24h): {stats['recent_entries']}")
-        print(f"   Total file size: {stats['total_file_size'] / 1024 / 1024:.1f} MB")
-        print(f"   Cache DB size: {stats['cache_db_size'] / 1024:.1f} KB")
-        print(f"   Cache location: {stats['cache_dir']}")
+        log_info(f"💾 Cache Statistics:")
+        log_info(f"   Total entries: {stats['total_entries']}")
+        log_info(f"   Recent (24h): {stats['recent_entries']}")
+        log_info(f"   Total file size: {stats['total_file_size'] / 1024 / 1024:.1f} MB")
+        log_info(f"   Cache DB size: {stats['cache_db_size'] / 1024:.1f} KB")
+        log_info(f"   Cache location: {stats['cache_dir']}")
 
 
 class IncrementalIndexer:

@@ -12,10 +12,12 @@ import os
 from pathlib import Path
 import time
 from dataclasses import dataclass
+from .logger import log_info, log_warning, log_error
 
 from .pattern_detector import PatternDetector
 from .library_detector import LibraryDetector
 from .infrastructure_detector import InfrastructureDetector
+from .parsers import create_default_parser
 
 
 @dataclass
@@ -40,6 +42,7 @@ class ParallelFileProcessor:
         self.pattern_detector = PatternDetector()
         self.library_detector = LibraryDetector()
         self.infrastructure_detector = InfrastructureDetector()
+        self.parser = create_default_parser()
     
     def process_files_parallel(self, file_paths: List[str]) -> List[FileProcessingResult]:
         """Process multiple files in parallel using multiprocessing"""
@@ -47,7 +50,7 @@ class ParallelFileProcessor:
             # For small numbers, sequential is faster due to overhead
             return [self._process_single_file(fp) for fp in file_paths]
         
-        print(f"🚀 Processing {len(file_paths)} files with {self.max_workers} workers...")
+        log_info(f"🚀 Processing {len(file_paths)} files with {self.max_workers} workers...")
         
         # Split into chunks for better load balancing
         chunk_size = max(1, len(file_paths) // self.max_workers)
@@ -69,7 +72,7 @@ class ParallelFileProcessor:
     
     async def process_files_async(self, file_paths: List[str]) -> List[FileProcessingResult]:
         """Process files asynchronously (for I/O bound operations)"""
-        print(f"⚡ Processing {len(file_paths)} files asynchronously...")
+        log_info(f"⚡ Processing {len(file_paths)} files asynchronously...")
         
         semaphore = asyncio.Semaphore(self.max_workers)
         
@@ -87,43 +90,73 @@ class ParallelFileProcessor:
         return valid_results
     
     def _process_single_file(self, file_path: str) -> FileProcessingResult:
-        """Process a single Python file"""
+        """Process a single code file using multi-language parser"""
         start_time = time.time()
         
         try:
-            # Read file content
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+            # Use multi-language parser
+            parse_result = self.parser.parse_file(file_path)
             
-            # Check for binary files
-            if '\x00' in content:
+            if not parse_result.success:
                 return FileProcessingResult(
                     file_path=file_path,
                     nodes={}, edges=[], patterns=[], libraries={}, infrastructure={},
                     processing_time=time.time() - start_time,
                     success=False,
-                    error_message="Binary file detected"
+                    error_message=parse_result.error_message or "Parse failed"
                 )
             
-            # Parse AST
-            try:
-                tree = ast.parse(content)
-            except (SyntaxError, ValueError) as e:
-                return FileProcessingResult(
-                    file_path=file_path,
-                    nodes={}, edges=[], patterns=[], libraries={}, infrastructure={},
-                    processing_time=time.time() - start_time,
-                    success=False,
-                    error_message=f"Parse error: {e}"
-                )
+            # Convert parser nodes to dict format
+            nodes = {}
+            node_counter = 0
+            parser_to_local_id = {}
             
-            # Extract basic nodes and edges
-            nodes, edges = self._extract_nodes_and_edges(tree, file_path)
+            for parser_node_id, parser_node in parse_result.nodes.items():
+                nodes[node_counter] = {
+                    'id': node_counter,
+                    'node_type': parser_node.node_type,
+                    'name': parser_node.name,
+                    'path': parser_node.path,
+                    'summary': parser_node.summary,
+                    'language': parser_node.language,
+                    'line_number': parser_node.line_number,
+                    'column_number': parser_node.column_number,
+                    'importance_score': 0.0,
+                    'relevance_tags': []
+                }
+                
+                # Add language-specific attributes
+                if parser_node.attributes:
+                    nodes[node_counter].update(parser_node.attributes)
+                
+                parser_to_local_id[parser_node_id] = node_counter
+                node_counter += 1
             
-            # Run detectors
-            patterns = self.pattern_detector.detect_patterns(tree, file_path)
-            libraries = self.library_detector.detect_libraries(tree, file_path, content)
-            infrastructure = self.infrastructure_detector.detect_infrastructure(tree, file_path, content)
+            # Convert relationships
+            edges = []
+            for relationship in parse_result.relationships:
+                source_id = parser_to_local_id.get(relationship.source_id)
+                target_id = parser_to_local_id.get(relationship.target_id)
+                
+                if source_id is not None and target_id is not None:
+                    edges.append((source_id, target_id, relationship.relationship_type))
+            
+            # For Python files, still do pattern/library detection
+            patterns = []
+            libraries = {}
+            infrastructure = {}
+            
+            if parse_result.language == 'python':
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    tree = ast.parse(content)
+                    patterns = self.pattern_detector.detect_patterns(tree, file_path)
+                    libraries = self.library_detector.extract_libraries(tree)
+                    infrastructure = self.infrastructure_detector.detect_infrastructure(tree)
+                except:
+                    pass  # Continue even if pattern detection fails
             
             return FileProcessingResult(
                 file_path=file_path,
@@ -271,9 +304,9 @@ class ProcessingStats:
     
     def print_stats(self):
         """Print processing statistics"""
-        print(f"📊 Processing Stats:")
-        print(f"   Total files: {self.total_files}")
-        print(f"   Successful: {self.successful_files}")
-        print(f"   Failed: {self.failed_files}")
-        print(f"   Total time: {self.total_time:.2f}s")
-        print(f"   Speed: {self.files_per_second:.1f} files/sec")
+        log_info(f"📊 Processing Stats:")
+        log_info(f"   Total files: {self.total_files}")
+        log_info(f"   Successful: {self.successful_files}")
+        log_info(f"   Failed: {self.failed_files}")
+        log_info(f"   Total time: {self.total_time:.2f}s")
+        log_info(f"   Speed: {self.files_per_second:.1f} files/sec")
