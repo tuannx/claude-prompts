@@ -2,9 +2,14 @@
 Claude Code Indexer - Code indexing tool using Ensmallen graph database
 """
 
-__version__ = "1.2.1"
-__author__ = "Tuan Nguyen"
-__email__ = "tuannguyen@duck.com"
+try:
+    from importlib.metadata import version
+    __version__ = version("claude-code-indexer")
+except:
+    __version__ = "unknown"
+
+__author__ = "Tony Nguyen"
+__email__ = "tony@startupascent.net"
 
 from .indexer import CodeGraphIndexer
 from .cli import main
