@@ -11,21 +11,42 @@ When user says "vibecode" or "!!!" or wants fast execution:
 !!! VIBECODE = NO ASK, JUST DO !!!
 !!! USER TYPES "!!!" = VIBECODE MODE ON !!!
 
+## 🎯 PRIORITY: GitHub Planning First!
+**ALWAYS check GitHub issues and create project plans BEFORE coding!**
+
+```bash
+# Start EVERY session with:
+gh issue list --assignee @me --state open  # View your tasks
+gh issue view <number>                      # Pick specific issue
+```
+
+See `plan/GITHUB_PLAN_MANAGEMENT.md` for complete GitHub workflow guide.
+
 ## Core Workflow Rules
 
-1. **First think through the problem**, read the codebase for relevant files, and write a plan to `tasks/todo.md`.
+1. **First check GitHub issues** and create/update issues for the work:
+   ```bash
+   gh issue create --title "Task: ..." --label "task" --assignee @me
+   ```
 
-2. **The plan should have a list of todo items** that you can check off as you complete them.
+2. **Then think through the problem**, read the codebase for relevant files, and write a plan to `tasks/todo.md`.
 
-3. **Before you begin working**, check in with me and I will verify the plan. !!! SKIP IN VIBECODE !!!
+3. **The plan should have a list of todo items** that you can check off as you complete them.
 
-4. **Then, begin working on the todo items**, marking them as complete as you go.
+4. **Before you begin working**, check in with me and I will verify the plan. !!! SKIP IN VIBECODE !!!
 
-5. **Please every step of the way** just give me a high level explanation of what changes you made. !!! VIBECODE = SILENT !!!
+5. **Then, begin working on the todo items**, marking them as complete as you go.
 
-6. **Make every task and code change you do as simple as possible**. We want to avoid making any massive or complex changes. Every change should impact as little code as possible. Everything is about simplicity.
+6. **Please every step of the way** just give me a high level explanation of what changes you made. !!! VIBECODE = SILENT !!!
 
-7. **Finally, add a review section** to the `todo.md` file with a summary of the changes you made and any other relevant information.
+7. **Make every task and code change you do as simple as possible**. We want to avoid making any massive or complex changes. Every change should impact as little code as possible. Everything is about simplicity.
+
+8. **Finally, add a review section** to the `todo.md` file with a summary of the changes you made and any other relevant information.
+
+9. **Close GitHub issue** when complete:
+   ```bash
+   gh issue close <number> --comment "Completed: <summary>"
+   ```
 
 ## Code Quality Principles
 
@@ -43,10 +64,12 @@ When user says "vibecode" or "!!!" or wants fast execution:
 
 ## Required Workflow Steps
 
-1. **Planning Phase** → Use planning mode prompt
-2. **Implementation Phase** → Follow todo checklist
-3. **Security Check** → Run security validation prompt
-4. **Learning Phase** → Use explanation prompt for knowledge transfer
+1. **GitHub Planning** → Check issues with `gh issue list --assignee @me`
+2. **Planning Phase** → Use planning mode prompt + create GitHub issues
+3. **Implementation Phase** → Follow todo checklist + update issue comments
+4. **Security Check** → Run security validation prompt
+5. **Learning Phase** → Use explanation prompt for knowledge transfer
+6. **Close Issues** → `gh issue close` with completion summary
 
 ## Task History Tracking
 - **Create task file** in `tasks/YYYY/MM/` for each new request

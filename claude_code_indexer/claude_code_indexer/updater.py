@@ -12,6 +12,7 @@ from packaging import version
 from rich.console import Console
 
 from . import __version__
+from .security import safe_subprocess_run, SecurityError
 
 console = Console()
 
@@ -48,10 +49,10 @@ class Updater:
             console.print("📦 [bold blue]Updating claude-code-indexer...[/bold blue]")
             
             # Use --upgrade flag to ensure we get the latest version
-            result = subprocess.run(
+            # Use safe_subprocess_run for security
+            result = safe_subprocess_run(
                 [sys.executable, "-m", "pip", "install", "--upgrade", "claude-code-indexer"],
-                capture_output=True,
-                text=True
+                timeout=60  # Allow more time for pip install
             )
             
             if result.returncode == 0:
@@ -61,6 +62,9 @@ class Updater:
                 console.print(f"❌ [bold red]Update failed: {result.stderr}[/bold red]")
                 return False
                 
+        except SecurityError as e:
+            console.print(f"❌ [bold red]Security error: {e}[/bold red]")
+            return False
         except Exception as e:
             console.print(f"❌ [bold red]Update error: {e}[/bold red]")
             return False

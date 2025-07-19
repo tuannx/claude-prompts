@@ -38,6 +38,12 @@ class BackgroundIndexingService:
         self.threads = {}
         self.project_start_offsets = {}  # Store random offsets for projects
         
+        # Rate limiting configuration
+        self.max_concurrent_indexing = 2  # Max concurrent indexing operations
+        self.max_cpu_percent = 50  # Max CPU usage percentage
+        self.max_memory_mb = 500  # Max memory usage in MB
+        self.indexing_semaphore = threading.Semaphore(self.max_concurrent_indexing)
+        
     def _load_config(self) -> Dict:
         """Load service configuration"""
         default_config = {
@@ -246,6 +252,12 @@ class BackgroundIndexingService:
                     if not self.running:
                         break
                     
+                    # Check system resources before indexing
+                    if not self._check_system_resources():
+                        log_info("System resources insufficient, waiting...")
+                        time.sleep(30)  # Wait 30 seconds before checking again
+                        continue
+                    
                     # Skip if already being indexed
                     if project_path in self.threads and self.threads[project_path].is_alive():
                         continue
@@ -330,8 +342,40 @@ class BackgroundIndexingService:
         
         return projects_to_index
     
+    def _check_system_resources(self) -> bool:
+        """Check if system resources allow for indexing"""
+        if not PSUTIL_AVAILABLE:
+            return True  # If psutil not available, allow indexing
+        
+        try:
+            # Check CPU usage
+            cpu_percent = psutil.cpu_percent(interval=1)
+            if cpu_percent > self.max_cpu_percent:
+                log_warning(f"CPU usage too high: {cpu_percent}% > {self.max_cpu_percent}%")
+                return False
+            
+            # Check memory usage
+            memory = psutil.virtual_memory()
+            memory_used_mb = (memory.used / 1024 / 1024)
+            memory_available_mb = (memory.available / 1024 / 1024)
+            
+            if memory_available_mb < self.max_memory_mb:
+                log_warning(f"Available memory too low: {memory_available_mb:.1f}MB < {self.max_memory_mb}MB")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            log_warning(f"Error checking system resources: {e}")
+            return True  # Allow indexing if we can't check resources
+    
     def _index_project(self, project_path: str):
-        """Index a single project"""
+        """Index a single project with rate limiting"""
+        # Acquire semaphore for rate limiting
+        if not self.indexing_semaphore.acquire(blocking=False):
+            log_warning(f"Rate limit reached, skipping {project_path}")
+            return
+        
         try:
             log_info(f"Starting background index of {project_path}")
             start_time = time.time()
@@ -358,6 +402,9 @@ class BackgroundIndexingService:
             
         except Exception as e:
             log_error(f"Error indexing {project_path}: {e}")
+        finally:
+            # Always release semaphore
+            self.indexing_semaphore.release()
     
     def get_status(self) -> Dict:
         """Get service status and statistics"""

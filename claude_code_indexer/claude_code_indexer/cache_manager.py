@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass, asdict
-import pickle
+# import pickle  # Removed for security - using JSON instead
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from .logger import log_info
@@ -149,12 +149,12 @@ class CacheManager:
             conn.close()
             
             if result:
-                cache_data = pickle.loads(result[0])
+                cache_data = json.loads(result[0])
                 return FileCache(**cache_data)
             
             return None
             
-        except (sqlite3.Error, pickle.PickleError):
+        except (sqlite3.Error, json.JSONDecodeError):
             return None
     
     def cache_file_result(self, file_path: str, nodes: Dict, edges: List, 
@@ -177,7 +177,20 @@ class CacheManager:
                 cached_at=time.time()
             )
             
-            cache_data = pickle.dumps(asdict(cache_entry))
+            # Custom JSON encoder to handle sets
+            cache_dict = asdict(cache_entry)
+            # Convert any sets to lists for JSON serialization
+            def convert_sets(obj):
+                if isinstance(obj, set):
+                    return list(obj)
+                elif isinstance(obj, dict):
+                    return {k: convert_sets(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_sets(v) for v in obj]
+                return obj
+            
+            cache_dict = convert_sets(cache_dict)
+            cache_data = json.dumps(cache_dict).encode('utf-8')
             
             conn = sqlite3.connect(str(self.cache_db))
             cursor = conn.cursor()
@@ -194,7 +207,7 @@ class CacheManager:
             conn.commit()
             conn.close()
             
-        except (OSError, sqlite3.Error, pickle.PickleError):
+        except (OSError, sqlite3.Error, json.JSONDecodeError, ValueError):
             pass  # Silent fail for caching
     
     def clear_cache(self, older_than_days: int = 30):

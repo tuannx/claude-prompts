@@ -15,6 +15,7 @@ from rich.text import Text
 from .indexer import CodeGraphIndexer
 from .updater import Updater, check_and_notify_update
 from . import __version__
+from .security import validate_file_path, SecurityError
 
 
 console = Console()
@@ -160,7 +161,14 @@ def init(force):
 @click.option('--verbose', is_flag=True, help='Show detailed parsing progress and errors')
 def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, custom_ignore, show_ignored, verbose):
     """Index source code in the specified directory with performance optimizations"""
-    console.print(f"📁 [bold blue]Indexing code in {path}...[/bold blue]")
+    # Validate path for security
+    try:
+        safe_path = validate_file_path(path)
+    except SecurityError as e:
+        console.print(f"❌ [red]Security error: {e}[/red]")
+        sys.exit(1)
+    
+    console.print(f"📁 [bold blue]Indexing code in {safe_path}...[/bold blue]")
     
     # Parse patterns - use None to auto-detect from supported languages
     pattern_list = None if patterns is None else [p.strip() for p in patterns.split(',')]
@@ -196,7 +204,7 @@ def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, 
         DatabaseBenchmark.benchmark_insert_performance(db + "_benchmark")
     
     # Create indexer with performance options
-    project_path = Path(path).resolve()
+    project_path = Path(safe_path).resolve()
     indexer = CodeGraphIndexer(
         db_path=db,  # Can be None to use centralized storage
         use_cache=not no_cache,
@@ -212,7 +220,7 @@ def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, 
         try:
             # Pass verbose flag to indexer
             indexer.verbose = verbose
-            indexer.index_directory(path, patterns=pattern_list, force_reindex=force, 
+            indexer.index_directory(safe_path, patterns=pattern_list, force_reindex=force, 
                                   custom_ignore=list(custom_ignore) if custom_ignore else None)
             progress.update(task, completed=100)
             

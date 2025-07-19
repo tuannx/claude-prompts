@@ -24,6 +24,7 @@ from .logger import log_info, log_warning, log_error
 from .ignore_handler import IgnoreHandler
 from .parsers import create_default_parser, ParseResult
 from .storage_manager import get_storage_manager
+from .security import validate_sql_identifier, SecurityError
 
 
 class CodeGraphIndexer:
@@ -555,11 +556,21 @@ class CodeGraphIndexer:
             return False
         
         try:
-            # Clear existing data safely
+            # Clear existing data safely - use parameterized queries
             tables_to_clear = ["relationships", "code_nodes", "patterns", "libraries", "infrastructure"]
             for table in tables_to_clear:
                 try:
-                    cursor.execute(f"DELETE FROM {table}")
+                    # Use explicit table names to avoid SQL injection
+                    if table == "relationships":
+                        cursor.execute("DELETE FROM relationships")
+                    elif table == "code_nodes":
+                        cursor.execute("DELETE FROM code_nodes")
+                    elif table == "patterns":
+                        cursor.execute("DELETE FROM patterns")
+                    elif table == "libraries":
+                        cursor.execute("DELETE FROM libraries")
+                    elif table == "infrastructure":
+                        cursor.execute("DELETE FROM infrastructure")
                 except sqlite3.Error as e:
                     log_warning(f"Could not clear table {table}: {e}")
             
@@ -967,8 +978,13 @@ class CodeGraphIndexer:
             for column_name, column_def in new_columns.items():
                 if column_name not in existing_columns:
                     try:
-                        cursor.execute(f"ALTER TABLE code_nodes ADD COLUMN {column_name} {column_def}")
-                        log_info(f"✓ Added column '{column_name}' to code_nodes table")
+                        # Validate column name to prevent SQL injection
+                        safe_column_name = validate_sql_identifier(column_name)
+                        # Use DDL with safe column name
+                        cursor.execute(f"ALTER TABLE code_nodes ADD COLUMN {safe_column_name} {column_def}")
+                        log_info(f"✓ Added column '{safe_column_name}' to code_nodes table")
+                    except SecurityError as e:
+                        log_warning(f"Invalid column name '{column_name}': {e}")
                     except sqlite3.Error as e:
                         log_warning(f"Could not add column '{column_name}': {e}")
             
@@ -1023,10 +1039,15 @@ class CodeGraphIndexer:
         
         for table_name, create_sql in new_tables.items():
             try:
-                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+                # Validate table name to prevent SQL injection
+                safe_table_name = validate_sql_identifier(table_name)
+                # Use parameterized query for table existence check
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (safe_table_name,))
                 if not cursor.fetchone():
                     cursor.execute(create_sql)
-                    log_info(f"✓ Created new table '{table_name}'")
+                    log_info(f"✓ Created new table '{safe_table_name}'")
+            except SecurityError as e:
+                log_warning(f"Invalid table name '{table_name}': {e}")
             except sqlite3.Error as e:
                 log_warning(f"Could not create table '{table_name}': {e}")
     
