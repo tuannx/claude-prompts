@@ -2,6 +2,41 @@
 
 All notable changes to Claude Code Indexer will be documented in this file.
 
+## [1.11.0] - 2025-01-19
+
+### 🚀 New Features
+- **AutoIt language support** - Added comprehensive AutoIt scripting language support (.au3, .aut, .a3x files)
+- **AutoIt parser** - Regex-based parser extracting functions, includes, variables, GUI elements, COM objects, and hotkeys
+- **Automated installation system** - Complete auto-installer with version detection and update capabilities
+- **Comprehensive test suite** - 5-test verification system for AutoIt functionality
+- **One-click installers** - Windows batch file and Unix shell script for easy installation
+- **Auto-update functionality** - Smart version checking and automatic updates
+
+### 🔧 Technical Details
+- **AutoIt Parser**: Uses regex patterns to extract AutoIt constructs (no AST available for AutoIt)
+- **GUI Elements**: Detects GUICreate, GUICtrlCreate* functions and GUI windows
+- **Variable Scoping**: Properly identifies Global and Local variable scopes
+- **COM Objects**: Recognizes ObjCreate statements for COM automation
+- **Hotkeys**: Parses HotKeySet definitions
+- **Case Insensitive**: Handles AutoIt's case-insensitive nature correctly
+- **Integration**: Seamlessly integrates with existing indexer infrastructure
+
+### 📦 Installation Improvements
+- **Simple Installer**: `simple-autoit-installer.py` - Windows-compatible, no Unicode issues
+- **Advanced Installer**: `install-autoit-support.py` - Full features with auto-update and testing
+- **One-Click Options**: Batch and shell scripts for easy deployment
+- **Verification Tool**: `verify_autoit_installation.py` - Comprehensive testing (5/5 tests)
+- **Smart Detection**: Automatically detects existing installations and updates appropriately
+
+### 🎯 AutoIt Elements Supported
+- **Functions**: Func...EndFunc blocks with parameter detection
+- **Includes**: #include statements for library dependencies
+- **Variables**: Global and Local variables with proper scope identification
+- **GUI Controls**: All GUICtrlCreate* functions (buttons, labels, inputs, etc.)
+- **COM Objects**: ObjCreate automation objects
+- **Hotkeys**: HotKeySet keyboard shortcuts
+- **File Types**: .au3 (source), .aut (include), .a3x (compiled) extensions
+
 ## [1.10.0] - 2025-01-17
 
 ### 🚀 New Features

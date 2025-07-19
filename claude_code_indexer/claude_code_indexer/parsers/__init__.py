@@ -7,6 +7,7 @@ from .base_parser import BaseParser, CompositeParser, CodeNode, CodeRelationship
 from .python_parser import PythonParser
 from .javascript_parser import JavaScriptParser
 from .java_parser import JavaParser
+from .autoit_parser import AutoItParser
 
 __all__ = [
     'BaseParser',
@@ -17,6 +18,7 @@ __all__ = [
     'PythonParser',
     'JavaScriptParser',
     'JavaParser',
+    'AutoItParser',
     'create_default_parser',
     'get_supported_extensions'
 ]
@@ -29,6 +31,7 @@ def create_default_parser() -> CompositeParser:
     composite.add_parser(PythonParser())
     composite.add_parser(JavaScriptParser())
     composite.add_parser(JavaParser())
+    composite.add_parser(AutoItParser())
     
     return composite
 
