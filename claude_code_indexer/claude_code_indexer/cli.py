@@ -275,28 +275,10 @@ def query(important, type, limit, db, project):
     
     if important:
         console.print("🔍 [bold blue]Most important code entities:[/bold blue]")
-        # Get all nodes first, then take top by importance
-        all_nodes = indexer.query_important_nodes(min_score=0.0, limit=1000)
-        
-        # Sort by importance score, but prioritize classes and functions
-        def sort_key(node):
-            type_priority = {
-                'class': 1000,
-                'function': 100,
-                'method': 10,
-                'file': 1,
-                'import': 0
-            }.get(node['node_type'], 0)
-            return node['importance_score'] + type_priority
-        
-        # Sort by combined score and take top N
-        nodes = sorted(all_nodes, key=sort_key, reverse=True)[:limit]
+        nodes = indexer.query_important_nodes(min_score=0.0, limit=limit, node_type=type)
     else:
         console.print("📋 [bold blue]All code entities:[/bold blue]")
-        nodes = indexer.query_important_nodes(min_score=0.0, limit=limit)
-    
-    if type:
-        nodes = [n for n in nodes if n['node_type'] == type]
+        nodes = indexer.query_important_nodes(min_score=0.0, limit=limit, node_type=type)
     
     if not nodes:
         if important:

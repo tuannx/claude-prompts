@@ -833,17 +833,22 @@ class CodeGraphIndexer:
         if ensmallen_graph:
             log_info(f"✓ Ensmallen graph ready for advanced analysis")
     
-    def query_important_nodes(self, min_score: float = 0.1, limit: int = 20) -> List[Dict]:
+    def query_important_nodes(self, min_score: float = 0.1, limit: int = 20, node_type: Optional[str] = None) -> List[Dict]:
         """Query nodes with high importance scores"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        cursor.execute('''
-        SELECT * FROM code_nodes 
-        WHERE importance_score >= ? 
-        ORDER BY importance_score DESC
-        LIMIT ?
-        ''', (min_score, limit))
+        query = "SELECT * FROM code_nodes WHERE importance_score >= ?"
+        params = [min_score]
+        
+        if node_type:
+            query += " AND node_type = ?"
+            params.append(node_type)
+            
+        query += " ORDER BY importance_score DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor.execute(query, params)
         
         columns = [description[0] for description in cursor.description]
         results = []
