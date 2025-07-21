@@ -15,8 +15,11 @@ A powerful code indexing tool that uses graph databases to analyze and understan
 - 📂 **Project-based indexing** for MCP with separate databases (v1.4.0+)
 - 🚫 **Smart ignore patterns** - auto-ignores node_modules, .git, etc (v1.5.0+)
 - 📝 **Respects .gitignore** and .dockerignore files (v1.5.0+)
-- 🌐 **Multi-language support** - Python, JavaScript, TypeScript (v1.6.0+), Java (v1.10.0+)
+- 🌐 **Multi-language support** - Python, JavaScript, TypeScript (v1.6.0+), Java (v1.10.0+), AutoIt (v1.11.0+)
 - 🏠 **Centralized storage** - All data in ~/.claude-code-indexer/ (v1.7.0+)
+- ⚡ **High-performance memory cache** - 10-100x faster with 100MB LRU cache (v1.12.0+)
+- 🏗️ **Infrastructure detection** - Auto-detects databases, APIs, cloud services, DevOps tools (v1.13.0+)
+- 🎯 **Professional CLI** - App name and version header on all commands (v1.13.0+)
 
 ## Installation
 
@@ -54,6 +57,22 @@ claude-code-indexer sync
 ```
 
 Updates will also be checked automatically when you run any command.
+
+## What's New in v1.13.0
+
+### 🎯 Enhanced User Experience
+- **App Name & Version Display** - All CLI commands now show a professional header
+- **Infrastructure Detection** - Automatically detects and tags databases, APIs, cloud services, and DevOps tools
+- **GitHub Actions CI/CD** - Complete test automation with multi-platform support
+
+### 🏗️ Infrastructure Tagging
+The indexer now detects and tags infrastructure components:
+- **Databases**: PostgreSQL, MySQL, MongoDB, Redis, SQLite
+- **APIs**: REST endpoints, GraphQL, gRPC, WebSocket
+- **Message Queues**: Kafka, RabbitMQ, SQS, Celery
+- **Cloud Services**: AWS, Azure, GCP, Docker, Kubernetes
+- **DevOps Tools**: CI/CD, monitoring, deployment configurations
+- **Environment Profiles**: production, staging, development
 
 ## What's New in v1.5.0
 
@@ -400,6 +419,56 @@ get_ignore_patterns("/path/to/project")
 - **Dependency tracking**: Understand code relationships
 - **Impact analysis**: Trace how changes propagate
 - **Similarity detection**: Find related code patterns
+
+## Performance & Caching
+
+### Memory Cache (v1.12.0+)
+
+Claude Code Indexer includes a high-performance memory cache that dramatically improves performance for frequently accessed data:
+
+- **100MB LRU Memory Cache**: Keeps hot data in memory for instant access
+- **10-100x Faster**: Memory cache hits complete in <1ms vs 10-50ms for disk
+- **Automatic Management**: LRU eviction and TTL-based expiration
+- **Entity-Specific Policies**: Different cache strategies per entity type
+
+### Cache Statistics
+
+View detailed cache performance metrics:
+
+```bash
+# Show cache statistics with project stats
+claude-code-indexer stats --cache
+
+# Standalone cache management
+claude-code-indexer cache
+
+# Clear old cache entries
+claude-code-indexer cache --clear --days 7
+```
+
+### Performance Benchmarks
+
+#### Real-World Performance
+- **Indexing Speed**: 22.4 files/sec (fresh index)
+- **Cache Speedup**: 64.6x faster on subsequent runs
+- **LLM Enhancement**: 1,116 nodes/sec
+- **Memory Usage**: <100MB for thousands of files
+
+#### Scalability
+| Project Size | Files | Time | Speed | Cache Speedup |
+|-------------|-------|------|-------|---------------|
+| Small | 50 | 2.3s | 22 files/s | 10-20x |
+| Medium | 500 | 9.0s | 55 files/s | 30-50x |
+| Large | 2000 | 21.6s | 93 files/s | 50-100x |
+
+See [PERFORMANCE_BENCHMARKS.md](PERFORMANCE_BENCHMARKS.md) for detailed analysis.
+
+### Performance Tips
+
+1. **First Run**: Initial indexing populates both disk and memory cache
+2. **Subsequent Runs**: Unchanged files load from memory cache (instant)
+3. **Memory Usage**: Default 100MB limit with automatic eviction
+4. **TTL Policies**: Files (7 days), Functions (3 days), Imports (1 day)
 
 ## Examples
 

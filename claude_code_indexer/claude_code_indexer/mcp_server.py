@@ -469,7 +469,337 @@ def _format_relationships(rel_types: Dict[str, int]) -> str:
     for rel_type, count in sorted(rel_types.items(), key=lambda x: x[1], reverse=True):
         lines.append(f"• {rel_type}: {count}")
     return "\n".join(lines)
+
+
+# LLM Metadata Enhancement Tools
+
+@mcp.tool()
+def enhance_metadata(project_path: str, limit: Optional[int] = None, force_refresh: bool = False) -> str:
+    """Enhance codebase metadata using LLM analysis.
     
+    Args:
+        project_path: Project directory path (required)
+        limit: Maximum number of nodes to analyze (optional)
+        force_refresh: Force re-analysis even if cached (default: False)
+    
+    Returns:
+        Analysis summary with enhanced metadata statistics
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        
+        # Perform LLM enhancement
+        result = indexer.enhance_metadata(limit=limit, force_refresh=force_refresh)
+        
+        output = f"🤖 LLM Metadata Enhancement Complete\n\n"
+        output += f"📊 Analysis Summary:\n"
+        output += f"• Analyzed nodes: {result.get('analyzed_count', 0)}\n"
+        output += f"• Total nodes: {result.get('total_nodes', 0)}\n"
+        output += f"• Duration: {result.get('analysis_duration', 'N/A')}\n"
+        output += f"• Speed: {result.get('nodes_per_second', 'N/A')} nodes/sec\n\n"
+        
+        # Architectural layers
+        layers = result.get('architectural_layers', {})
+        if layers:
+            output += f"🏗️ Architectural Layers:\n"
+            for layer, count in sorted(layers.items(), key=lambda x: x[1], reverse=True):
+                output += f"• {layer}: {count} components\n"
+            output += "\n"
+        
+        # Criticality distribution
+        criticality = result.get('criticality_distribution', {})
+        if criticality:
+            output += f"⚠️ Criticality Distribution:\n"
+            for level, count in sorted(criticality.items(), key=lambda x: x[1], reverse=True):
+                output += f"• {level}: {count} components\n"
+            output += "\n"
+        
+        # Business domains
+        domains = result.get('business_domains', {})
+        if domains:
+            output += f"🏢 Business Domains:\n"
+            for domain, count in sorted(domains.items(), key=lambda x: x[1], reverse=True):
+                output += f"• {domain}: {count} components\n"
+            output += "\n"
+        
+        # Average scores
+        avg_scores = result.get('average_scores', {})
+        if avg_scores:
+            output += f"📈 Average Scores:\n"
+            output += f"• Complexity: {avg_scores.get('complexity', 0):.3f}\n"
+            output += f"• Dependencies Impact: {avg_scores.get('dependencies_impact', 0):.3f}\n"
+            output += f"• Testability: {avg_scores.get('testability', 0):.3f}\n"
+            output += "\n"
+        
+        # Detected patterns
+        patterns = result.get('detected_patterns', {})
+        if patterns:
+            output += f"🎨 Design Patterns Detected:\n"
+            for pattern, count in sorted(patterns.items(), key=lambda x: x[1], reverse=True):
+                output += f"• {pattern}: {count} instances\n"
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Enhancement failed: {str(e)}"
+
+
+@mcp.tool()
+def query_enhanced_nodes(project_path: str, 
+                        architectural_layer: Optional[str] = None,
+                        business_domain: Optional[str] = None,
+                        criticality_level: Optional[str] = None,
+                        min_complexity: Optional[float] = None,
+                        limit: int = 20) -> str:
+    """Query nodes with enhanced metadata and filters.
+    
+    Args:
+        project_path: Project directory path (required)
+        architectural_layer: Filter by layer (controller, service, model, etc.)
+        business_domain: Filter by domain (authentication, payment, etc.)
+        criticality_level: Filter by criticality (critical, important, normal, low)
+        min_complexity: Filter by minimum complexity score (0.0-1.0)
+        limit: Maximum number of results (default: 20)
+    
+    Returns:
+        List of enhanced nodes with metadata
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        
+        nodes = indexer.query_enhanced_nodes(
+            architectural_layer=architectural_layer,
+            business_domain=business_domain,
+            criticality_level=criticality_level,
+            min_complexity=min_complexity,
+            limit=limit
+        )
+        
+        if not nodes:
+            return "ℹ️ No enhanced nodes found matching the criteria"
+        
+        output = f"🔍 Enhanced Nodes Query Results\n\n"
+        
+        # Add filter info
+        filters = []
+        if architectural_layer:
+            filters.append(f"Layer: {architectural_layer}")
+        if business_domain:
+            filters.append(f"Domain: {business_domain}")
+        if criticality_level:
+            filters.append(f"Criticality: {criticality_level}")
+        if min_complexity:
+            filters.append(f"Min Complexity: {min_complexity}")
+        
+        if filters:
+            output += f"🎯 Filters: {', '.join(filters)}\n"
+        
+        output += f"📊 Found {len(nodes)} nodes (limit: {limit})\n\n"
+        
+        for i, node in enumerate(nodes, 1):
+            output += f"{i}. **{node['name']}** ({node['node_type']})\n"
+            output += f"   📁 Path: {node['path']}\n"
+            output += f"   🏗️ Layer: {node.get('architectural_layer', 'unknown')}\n"
+            output += f"   🏢 Domain: {node.get('business_domain', 'general')}\n"
+            output += f"   ⚠️ Criticality: {node.get('criticality_level', 'normal')}\n"
+            output += f"   📊 Complexity: {node.get('complexity_score', 0):.3f}\n"
+            output += f"   🎯 Importance: {node.get('importance_score', 0):.3f}\n"
+            
+            # Role tags
+            role_tags = node.get('role_tags', [])
+            if role_tags:
+                output += f"   🏷️ Tags: {', '.join(role_tags)}\n"
+            
+            # LLM summary
+            summary = node.get('llm_summary', '')
+            if summary:
+                output += f"   📝 Summary: {summary[:100]}{'...' if len(summary) > 100 else ''}\n"
+            
+            output += "\n"
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Query failed: {str(e)}"
+
+
+@mcp.tool()
+def get_codebase_insights(project_path: str) -> str:
+    """Get comprehensive codebase insights and health assessment.
+    
+    Args:
+        project_path: Project directory path (required)
+    
+    Returns:
+        Detailed insights about codebase health, architecture, and recommendations
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        insights = indexer.get_analysis_insights()
+        
+        output = f"📊 Codebase Insights for: {project_path}\n\n"
+        
+        # Codebase health
+        health = insights.get('codebase_health', {})
+        if health:
+            output += f"🏥 Codebase Health:\n"
+            output += f"• Overall Score: {health.get('overall_score', 0):.3f}/1.0\n"
+            output += f"• Complexity Health: {health.get('complexity_health', 'unknown')}\n"
+            output += f"• Testability Health: {health.get('testability_health', 'unknown')}\n"
+            
+            recommendations = health.get('recommendations', [])
+            if recommendations:
+                output += f"• Recommendations:\n"
+                for rec in recommendations:
+                    output += f"  - {rec}\n"
+            output += "\n"
+        
+        # Architectural overview
+        arch = insights.get('architectural_overview', {})
+        if arch:
+            output += f"🏗️ Architecture Overview:\n"
+            
+            layer_dist = arch.get('layer_distribution', {})
+            if layer_dist:
+                output += f"• Layer Distribution:\n"
+                for layer, count in sorted(layer_dist.items(), key=lambda x: x[1], reverse=True):
+                    output += f"  - {layer}: {count} components\n"
+            
+            domain_dist = arch.get('domain_distribution', {})
+            if domain_dist:
+                output += f"• Domain Distribution:\n"
+                for domain, count in sorted(domain_dist.items(), key=lambda x: x[1], reverse=True):
+                    output += f"  - {domain}: {count} components\n"
+            
+            layer_balance = arch.get('layer_balance', 'unknown')
+            domain_focus = arch.get('domain_focus', 'unknown')
+            output += f"• Layer Balance: {layer_balance}\n"
+            output += f"• Primary Domain: {domain_focus}\n\n"
+        
+        # Complexity hotspots
+        hotspots = insights.get('complexity_hotspots', [])
+        if hotspots:
+            output += f"🔥 Complexity Hotspots:\n"
+            for i, hotspot in enumerate(hotspots[:5], 1):  # Top 5
+                output += f"{i}. {hotspot['name']} ({hotspot['layer']})\n"
+                output += f"   📁 {hotspot['path']}\n"
+                output += f"   📊 Complexity: {hotspot['complexity']:.3f}\n\n"
+        
+        # Improvement suggestions
+        suggestions = insights.get('improvement_suggestions', [])
+        if suggestions:
+            output += f"💡 Improvement Suggestions:\n"
+            for i, suggestion in enumerate(suggestions, 1):
+                output += f"{i}. {suggestion}\n"
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Insights generation failed: {str(e)}"
+
+
+@mcp.tool()
+def get_critical_components(project_path: str, limit: int = 15) -> str:
+    """Get most critical components in the codebase.
+    
+    Args:
+        project_path: Project directory path (required)
+        limit: Maximum number of components to return (default: 15)
+    
+    Returns:
+        List of critical components with metadata
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        critical_components = indexer.get_critical_components(limit=limit)
+        
+        if not critical_components:
+            return "ℹ️ No critical components found. Run 'enhance_metadata' first."
+        
+        output = f"⚠️ Critical Components (Top {len(critical_components)})\n\n"
+        
+        for i, comp in enumerate(critical_components, 1):
+            output += f"{i}. **{comp['name']}** ({comp['node_type']})\n"
+            output += f"   📁 Path: {comp['path']}\n"
+            output += f"   🏗️ Layer: {comp.get('architectural_layer', 'unknown')}\n"
+            output += f"   🏢 Domain: {comp.get('business_domain', 'general')}\n"
+            output += f"   📊 Complexity: {comp.get('complexity_score', 0):.3f}\n"
+            output += f"   🎯 Importance: {comp.get('importance_score', 0):.3f}\n"
+            output += f"   💥 Impact: {comp.get('dependencies_impact', 0):.3f}\n"
+            
+            # LLM summary
+            summary = comp.get('llm_summary', '')
+            if summary:
+                output += f"   📝 Summary: {summary[:80]}{'...' if len(summary) > 80 else ''}\n"
+            
+            output += "\n"
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Critical components query failed: {str(e)}"
+
+
+@mcp.tool()
+def update_node_metadata(project_path: str, node_id: int, updates: Dict[str, Any]) -> str:
+    """Update enhanced metadata for a specific node.
+    
+    Args:
+        project_path: Project directory path (required)
+        node_id: ID of the node to update
+        updates: Dictionary of field updates (role_tags, complexity_score, etc.)
+    
+    Returns:
+        Success/failure message
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        
+        # Convert string JSON to dict if needed
+        if isinstance(updates, str):
+            import json
+            updates = json.loads(updates)
+        
+        success = indexer.update_node_metadata(node_id, updates)
+        
+        if success:
+            output = f"✅ Successfully updated metadata for node {node_id}\n\n"
+            output += f"📝 Updates applied:\n"
+            for field, value in updates.items():
+                output += f"• {field}: {value}\n"
+            return output
+        else:
+            return f"❌ Failed to update metadata for node {node_id}"
+        
+    except json.JSONDecodeError as e:
+        return f"❌ Invalid JSON in updates: {str(e)}"
+    except Exception as e:
+        return f"❌ Update failed: {str(e)}"
 
 
 def main():

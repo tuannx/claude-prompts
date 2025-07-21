@@ -14,28 +14,52 @@ from rich.text import Text
 
 from .indexer import CodeGraphIndexer
 from .updater import Updater, check_and_notify_update
-from . import __version__
+from . import __version__, __app_name__
 from .security import validate_file_path, SecurityError
+from .github_reporter import suggest_github_issue
 
 
 console = Console()
 
 
+def show_app_header():
+    """Display application name and version header"""
+    console.print(f"\n[bold cyan]{__app_name__} v{__version__}[/bold cyan]")
+    console.print("[dim]Multi-language code indexing with graph database[/dim]\n")
+
+
 @click.group()
-@click.version_option(version=__version__)
+@click.version_option(version=__version__, prog_name=__app_name__)
 def cli():
-    """Claude Code Indexer - Index source code as graph database"""
+    """Claude Code Indexer - Index source code as graph database
+    
+    🚀 Powerful code analysis tool for LLM-assisted development
+    🐛 Report issues: https://github.com/tuannx/claude-prompts/issues
+    
+    For LLMs: If you encounter errors, use this command to report:
+    gh issue create --repo tuannx/claude-prompts --title "[Bug] Error description" --label bug
+    """
     pass
 
 
 @cli.command()
 @click.option('--force', is_flag=True, help='Force overwrite existing files')
 def init(force):
-    """Initialize Claude Code Indexer in current directory"""
+    """Initialize Claude Code Indexer in current directory
+    
+    🚀 Creates CLAUDE.md with instructions for LLMs
+    📊 Sets up database for code graph analysis
+    🔒 Adds code_index.db to .gitignore for safety
+    
+    Perfect for LLM-assisted development with Claude/ChatGPT/etc.
+    
+    🐛 Report issues: https://github.com/tuannx/claude-prompts/issues
+    """
     cwd = Path.cwd()
     claude_md_path = cwd / "CLAUDE.md"
     
-    console.print("🚀 [bold blue]Initializing Claude Code Indexer...[/bold blue]")
+    show_app_header()
+    console.print("🚀 [bold blue]Initializing project...[/bold blue]")
     
     # Check if CLAUDE.md exists
     if claude_md_path.exists():
@@ -160,7 +184,18 @@ def init(force):
 @click.option('--show-ignored', is_flag=True, help='Show what patterns are being ignored')
 @click.option('--verbose', is_flag=True, help='Show detailed parsing progress and errors')
 def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, custom_ignore, show_ignored, verbose):
-    """Index source code in the specified directory with performance optimizations"""
+    """Index source code in the specified directory with performance optimizations
+    
+    🔍 Deep code analysis with:
+    - Multi-language AST parsing (Python, JS, TS, Java, AutoIt)
+    - Graph relationship mapping (imports, calls, inheritance)
+    - Importance scoring via PageRank algorithm
+    - Smart caching (64.6x faster re-indexing)
+    
+    💡 LLM Tip: Run this first to understand any codebase!
+    
+    🐛 Report issues: https://github.com/tuannx/claude-prompts/issues
+    """
     # Validate path for security
     try:
         safe_path = validate_file_path(path)
@@ -168,6 +203,7 @@ def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, 
         console.print(f"❌ [red]Security error: {e}[/red]")
         sys.exit(1)
     
+    show_app_header()
     console.print(f"📁 [bold blue]Indexing code in {safe_path}...[/bold blue]")
     
     # Parse patterns - use None to auto-detect from supported languages
@@ -236,7 +272,14 @@ def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, 
             console.print(f"❌ [bold red]Error during indexing: {e}[/bold red]")
             if verbose:
                 import traceback
-                console.print("[dim]" + traceback.format_exc() + "[/dim]")
+                traceback.print_exc()
+            # Suggest GitHub issue reporting
+            suggest_github_issue(
+                error_type=type(e).__name__,
+                error_message=str(e),
+                command=f"index {path}",
+                traceback=traceback.format_exc() if verbose else None
+            )
             sys.exit(1)
     
     console.print(f"✅ [bold green]Indexing complete![/bold green]")
@@ -249,7 +292,19 @@ def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, 
 @click.option('--db', default=None, help='Database file path (default: centralized storage)')
 @click.option('--project', help='Project name/path to query (default: current directory)')
 def query(important, type, limit, db, project):
-    """Query indexed code entities"""
+    """Query indexed code entities
+    
+    🎯 Perfect for LLMs to understand codebase structure!
+    
+    Examples:
+    - claude-code-indexer query --important     # Key components
+    - claude-code-indexer query --type class    # All classes
+    - claude-code-indexer query --limit 50      # Top 50 nodes
+    
+    🐛 Report issues: https://github.com/tuannx/claude-prompts/issues
+    """
+    show_app_header()
+    
     # Determine project path
     from .storage_manager import get_storage_manager
     storage = get_storage_manager()
@@ -275,21 +330,25 @@ def query(important, type, limit, db, project):
     
     if important:
         console.print("🔍 [bold blue]Most important code entities:[/bold blue]")
-        nodes = indexer.query_important_nodes(min_score=0.0, limit=limit, node_type=type)
+        # First try with high importance threshold
+        nodes = indexer.query_important_nodes(min_score=0.1, limit=limit, node_type=type)
+        
+        if not nodes:
+            # Fallback: get any nodes but keep the type filter
+            nodes = indexer.query_important_nodes(min_score=0.0, limit=limit, node_type=type)
+            if nodes:
+                console.print("⚠️  No high-importance entities found. Showing top entities by score...")
+                console.print(f"ℹ️  Highest score: {nodes[0]['importance_score']:.3f}")
     else:
         console.print("📋 [bold blue]All code entities:[/bold blue]")
         nodes = indexer.query_important_nodes(min_score=0.0, limit=limit, node_type=type)
     
     if not nodes:
-        if important:
-            console.print("⚠️  No high-importance entities found. Showing top entities by score...")
-            # Fallback: get any nodes sorted by importance
-            nodes = indexer.query_important_nodes(min_score=0.0, limit=limit)
-            if nodes:
-                console.print(f"ℹ️  Highest score: {nodes[0]['importance_score']:.3f}")
+        if type:
+            console.print(f"❌ No entities found of type '{type}'.")
         else:
-            console.print("No entities found matching criteria.")
-            return
+            console.print("❌ No entities found.")
+        return
     
     # Create table
     table = Table(show_header=True, header_style="bold magenta")
@@ -331,6 +390,8 @@ def search(terms, db, mode, limit, type, project):
         claude-code-indexer search service firestore --type class --limit 10
         claude-code-indexer search process --type function
     """
+    show_app_header()
+    
     # Determine project path
     from .storage_manager import get_storage_manager
     storage = get_storage_manager()
@@ -429,7 +490,18 @@ def search(terms, db, mode, limit, type, project):
 @click.option('--cache', is_flag=True, help='Show cache statistics')
 @click.option('--project', help='Project name/path for stats (default: current directory)')
 def stats(db, cache, project):
-    """Show indexing statistics"""
+    """Show indexing statistics
+    
+    📊 Quick overview for LLMs:
+    - Total nodes and relationships
+    - Node type distribution
+    - Last indexed timestamp
+    - Cache performance metrics
+    
+    🐛 Report issues: https://github.com/tuannx/claude-prompts/issues
+    """
+    show_app_header()
+    
     # Determine project path
     from .storage_manager import get_storage_manager
     storage = get_storage_manager()
@@ -603,6 +675,8 @@ def restart():
 @background.command()
 def status():
     """Show background indexing service status"""
+    show_app_header()
+    
     from .background_service import get_background_service
     
     service = get_background_service()
@@ -830,6 +904,395 @@ def clean():
             console.print(f"   • {path}")
     else:
         console.print("✨ [green]No orphaned projects found.[/green]")
+
+
+# LLM Metadata Enhancement Commands
+
+@cli.command(name='enhance')
+@click.argument('path', type=click.Path(exists=True), default='.')
+@click.option('--limit', type=int, help='Limit number of nodes to analyze')
+@click.option('--force', is_flag=True, help='Force re-analysis even if cached')
+@click.option('--project', help='Project name/path (default: current directory)')
+def enhance_metadata(path, limit, force, project):
+    """Enhance codebase metadata using LLM analysis
+    
+    🤖 LLM Enhancement - Powerful AI-driven code analysis
+    
+    ⚠️  SECURITY WARNING:
+    - Do NOT use on code containing secrets, API keys, or sensitive data
+    - Recommended for open source or development code only
+    - Start with --limit 5-10 to test before full analysis
+    
+    📊 Features:
+    - Architectural layer detection (service, model, controller, etc.)
+    - Business domain classification
+    - Complexity scoring (0.0-1.0)
+    - Criticality assessment
+    - Role tagging and pattern detection
+    
+    💡 Best Practices:
+    1. Test with: claude-code-indexer enhance . --limit 5
+    2. Review results before scaling up
+    3. Use insights command to query enhanced data
+    
+    🐛 Report issues: https://github.com/tuannx/claude-prompts/issues
+    """
+    show_app_header()
+    
+    try:
+        path = validate_file_path(path)
+    except SecurityError as e:
+        console.print(f"❌ [bold red]Security error: {e}[/bold red]")
+        sys.exit(1)
+    
+    console.print(f"🤖 [bold blue]Starting LLM metadata enhancement for: {path}[/bold blue]")
+    
+    try:
+        indexer = CodeGraphIndexer(project_path=Path(path))
+        
+        with Progress() as progress:
+            task = progress.add_task("Analyzing codebase...", total=None)
+            result = indexer.enhance_metadata(limit=limit, force_refresh=force)
+            progress.update(task, completed=100, total=100)
+        
+        # Display results
+        console.print("\n📊 [bold green]Enhancement Complete![/bold green]")
+        
+        analyzed = result.get('analyzed_count', 0)
+        total = result.get('total_nodes', 0)
+        duration = result.get('analysis_duration', 'N/A')
+        speed = result.get('nodes_per_second', 'N/A')
+        
+        table = Table(title="Analysis Summary")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="green")
+        
+        table.add_row("Analyzed Nodes", str(analyzed))
+        table.add_row("Total Nodes", str(total))
+        table.add_row("Duration", duration)
+        table.add_row("Speed", f"{speed} nodes/sec")
+        
+        console.print(table)
+        
+        # Show architectural layers
+        layers = result.get('architectural_layers', {})
+        if layers:
+            console.print("\n🏗️ [bold]Architectural Layers:[/bold]")
+            for layer, count in sorted(layers.items(), key=lambda x: x[1], reverse=True):
+                console.print(f"  • {layer}: {count} components")
+        
+        # Show criticality distribution
+        criticality = result.get('criticality_distribution', {})
+        if criticality:
+            console.print("\n⚠️ [bold]Criticality Distribution:[/bold]")
+            for level, count in sorted(criticality.items(), key=lambda x: x[1], reverse=True):
+                console.print(f"  • {level}: {count} components")
+        
+        # Show business domains
+        domains = result.get('business_domains', {})
+        if domains:
+            console.print("\n🏢 [bold]Business Domains:[/bold]")
+            for domain, count in sorted(domains.items(), key=lambda x: x[1], reverse=True):
+                console.print(f"  • {domain}: {count} components")
+        
+    except Exception as e:
+        console.print(f"❌ [bold red]Enhancement failed: {e}[/bold red]")
+        # Suggest GitHub issue reporting
+        import traceback
+        suggest_github_issue(
+            error_type=type(e).__name__,
+            error_message=str(e),
+            command=f"enhance {path} --limit {limit}",
+            traceback=traceback.format_exc()
+        )
+        sys.exit(1)
+
+
+@cli.command(name='insights')
+@click.argument('path', type=click.Path(exists=True), default='.')
+@click.option('--project', help='Project name/path (default: current directory)')
+def get_insights(path, project):
+    """Get comprehensive codebase insights and health assessment"""
+    try:
+        path = validate_file_path(path)
+    except SecurityError as e:
+        console.print(f"❌ [bold red]Security error: {e}[/bold red]")
+        sys.exit(1)
+    
+    console.print(f"📊 [bold blue]Getting codebase insights for: {path}[/bold blue]")
+    
+    try:
+        indexer = CodeGraphIndexer(project_path=Path(path))
+        insights = indexer.get_analysis_insights()
+        
+        if not insights:
+            console.print("ℹ️ [yellow]No enhanced metadata found. Run 'claude-code-indexer enhance' first.[/yellow]")
+            return
+        
+        # Codebase health
+        health = insights.get('codebase_health', {})
+        if health:
+            console.print("\n🏥 [bold]Codebase Health:[/bold]")
+            
+            overall_score = health.get('overall_score', 0)
+            color = "green" if overall_score > 0.7 else "yellow" if overall_score > 0.5 else "red"
+            console.print(f"  Overall Score: [{color}]{overall_score:.3f}/1.0[/{color}]")
+            
+            complexity_health = health.get('complexity_health', 'unknown')
+            testability_health = health.get('testability_health', 'unknown')
+            console.print(f"  Complexity: {complexity_health}")
+            console.print(f"  Testability: {testability_health}")
+            
+            recommendations = health.get('recommendations', [])
+            if recommendations:
+                console.print("  [bold]Recommendations:[/bold]")
+                for rec in recommendations:
+                    console.print(f"    - {rec}")
+        
+        # Architectural overview
+        arch = insights.get('architectural_overview', {})
+        if arch:
+            console.print("\n🏗️ [bold]Architecture Overview:[/bold]")
+            
+            layer_dist = arch.get('layer_distribution', {})
+            if layer_dist:
+                console.print("  Layer Distribution:")
+                for layer, count in sorted(layer_dist.items(), key=lambda x: x[1], reverse=True):
+                    console.print(f"    - {layer}: {count} components")
+            
+            layer_balance = arch.get('layer_balance', 'unknown')
+            domain_focus = arch.get('domain_focus', 'unknown')
+            console.print(f"  Layer Balance: {layer_balance}")
+            console.print(f"  Primary Domain: {domain_focus}")
+        
+        # Complexity hotspots
+        hotspots = insights.get('complexity_hotspots', [])
+        if hotspots:
+            console.print("\n🔥 [bold]Complexity Hotspots:[/bold]")
+            for i, hotspot in enumerate(hotspots[:5], 1):  # Top 5
+                console.print(f"  {i}. {hotspot['name']} ({hotspot['layer']})")
+                console.print(f"     📁 {hotspot['path']}")
+                console.print(f"     📊 Complexity: {hotspot['complexity']:.3f}")
+        
+        # Improvement suggestions
+        suggestions = insights.get('improvement_suggestions', [])
+        if suggestions:
+            console.print("\n💡 [bold]Improvement Suggestions:[/bold]")
+            for i, suggestion in enumerate(suggestions, 1):
+                console.print(f"  {i}. {suggestion}")
+    
+    except Exception as e:
+        console.print(f"❌ [bold red]Failed to get insights: {e}[/bold red]")
+        # Suggest GitHub issue reporting
+        import traceback
+        suggest_github_issue(
+            error_type=type(e).__name__,
+            error_message=str(e),
+            command=f"insights {path}",
+            traceback=traceback.format_exc()
+        )
+        sys.exit(1)
+
+
+@cli.command(name='enhanced')
+@click.argument('path', type=click.Path(exists=True), default='.')
+@click.option('--layer', help='Filter by architectural layer (controller, service, model, etc.)')
+@click.option('--domain', help='Filter by business domain (authentication, payment, etc.)')
+@click.option('--criticality', help='Filter by criticality level (critical, important, normal, low)')
+@click.option('--min-complexity', type=float, help='Filter by minimum complexity score (0.0-1.0)')
+@click.option('--limit', type=int, default=20, help='Maximum number of results')
+@click.option('--project', help='Project name/path (default: current directory)')
+def query_enhanced(path, layer, domain, criticality, min_complexity, limit, project):
+    """Query nodes with enhanced metadata and filters"""
+    try:
+        path = validate_file_path(path)
+    except SecurityError as e:
+        console.print(f"❌ [bold red]Security error: {e}[/bold red]")
+        sys.exit(1)
+    
+    console.print(f"🔍 [bold blue]Querying enhanced nodes for: {path}[/bold blue]")
+    
+    try:
+        indexer = CodeGraphIndexer(project_path=Path(path))
+        
+        nodes = indexer.query_enhanced_nodes(
+            architectural_layer=layer,
+            business_domain=domain,
+            criticality_level=criticality,
+            min_complexity=min_complexity,
+            limit=limit
+        )
+        
+        if not nodes:
+            console.print("ℹ️ [yellow]No enhanced nodes found matching criteria. Run 'claude-code-indexer enhance' first.[/yellow]")
+            return
+        
+        # Show filter info
+        filters = []
+        if layer:
+            filters.append(f"Layer: {layer}")
+        if domain:
+            filters.append(f"Domain: {domain}")
+        if criticality:
+            filters.append(f"Criticality: {criticality}")
+        if min_complexity:
+            filters.append(f"Min Complexity: {min_complexity}")
+        
+        if filters:
+            console.print(f"🎯 [cyan]Filters: {', '.join(filters)}[/cyan]")
+        
+        console.print(f"📊 Found {len(nodes)} nodes (limit: {limit})\n")
+        
+        # Create table
+        table = Table(title="Enhanced Nodes")
+        table.add_column("Name", style="cyan")
+        table.add_column("Type", style="yellow")
+        table.add_column("Layer", style="green")
+        table.add_column("Domain", style="blue")
+        table.add_column("Criticality", style="red")
+        table.add_column("Complexity", style="magenta")
+        table.add_column("Importance", style="bright_white")
+        
+        for node in nodes:
+            name = node['name'][:25] + "..." if len(node['name']) > 25 else node['name']
+            node_type = node['node_type']
+            layer = node.get('architectural_layer', 'unknown')
+            domain = node.get('business_domain', 'general')
+            criticality_val = node.get('criticality_level', 'normal')
+            complexity = f"{node.get('complexity_score', 0):.3f}"
+            importance = f"{node.get('importance_score', 0):.3f}"
+            
+            table.add_row(name, node_type, layer, domain, criticality_val, complexity, importance)
+        
+        console.print(table)
+        
+    except Exception as e:
+        console.print(f"❌ [bold red]Query failed: {e}[/bold red]")
+        # Suggest GitHub issue reporting
+        import traceback
+        suggest_github_issue(
+            error_type=type(e).__name__,
+            error_message=str(e),
+            command=f"enhanced {path}",
+            traceback=traceback.format_exc()
+        )
+        sys.exit(1)
+
+
+@cli.command(name='critical')
+@click.argument('path', type=click.Path(exists=True), default='.')
+@click.option('--limit', type=int, default=15, help='Maximum number of components to show')
+@click.option('--project', help='Project name/path (default: current directory)')
+def get_critical_components(path, limit, project):
+    """Get most critical components in the codebase"""
+    try:
+        path = validate_file_path(path)
+    except SecurityError as e:
+        console.print(f"❌ [bold red]Security error: {e}[/bold red]")
+        sys.exit(1)
+    
+    console.print(f"⚠️ [bold blue]Getting critical components for: {path}[/bold blue]")
+    
+    try:
+        indexer = CodeGraphIndexer(project_path=Path(path))
+        critical_components = indexer.get_critical_components(limit=limit)
+        
+        if not critical_components:
+            console.print("ℹ️ [yellow]No critical components found. Run 'claude-code-indexer enhance' first.[/yellow]")
+            return
+        
+        console.print(f"\n⚠️ [bold red]Critical Components (Top {len(critical_components)}):[/bold red]\n")
+        
+        for i, comp in enumerate(critical_components, 1):
+            console.print(f"{i}. [bold]{comp['name']}[/bold] ({comp['node_type']})")
+            console.print(f"   📁 Path: {comp['path']}")
+            console.print(f"   🏗️ Layer: {comp.get('architectural_layer', 'unknown')}")
+            console.print(f"   🏢 Domain: {comp.get('business_domain', 'general')}")
+            console.print(f"   📊 Complexity: {comp.get('complexity_score', 0):.3f}")
+            console.print(f"   🎯 Importance: {comp.get('importance_score', 0):.3f}")
+            console.print(f"   💥 Impact: {comp.get('dependencies_impact', 0):.3f}")
+            
+            # Role tags
+            role_tags = comp.get('role_tags', [])
+            if role_tags:
+                console.print(f"   🏷️ Tags: {', '.join(role_tags)}")
+            
+            # LLM summary
+            summary = comp.get('llm_summary', '')
+            if summary:
+                truncated = summary[:80] + "..." if len(summary) > 80 else summary
+                console.print(f"   📝 Summary: {truncated}")
+            
+            console.print()
+    
+    except Exception as e:
+        console.print(f"❌ [bold red]Failed to get critical components: {e}[/bold red]")
+        # Suggest GitHub issue reporting
+        import traceback
+        suggest_github_issue(
+            error_type=type(e).__name__,
+            error_message=str(e),
+            command=f"critical {path} --limit {limit}",
+            traceback=traceback.format_exc()
+        )
+        sys.exit(1)
+
+
+@cli.command(name='llm-guide')
+def llm_guide():
+    """🤖 Guide for LLMs using claude-code-indexer
+    
+    Special command providing comprehensive usage instructions
+    for AI assistants like Claude, ChatGPT, etc.
+    """
+    guide = """🤖 Claude Code Indexer - LLM Usage Guide
+
+🌟 QUICK START for understanding any codebase:
+1. claude-code-indexer index .          # Index the codebase (4-5s)
+2. claude-code-indexer stats            # View overview (0.1s cached)
+3. claude-code-indexer query --important # See key components
+4. claude-code-indexer search <term>    # Find specific code
+
+⚠️  SECURITY WARNINGS:
+- NEVER use 'enhance' on code with secrets/API keys
+- Check for .env files before indexing: find . -name "*.env"
+- Safe for open source and development code
+
+🚀 ADVANCED FEATURES:
+1. LLM Enhancement (use carefully):
+   claude-code-indexer enhance . --limit 5  # Test first!
+   claude-code-indexer insights             # View AI analysis
+   
+2. Multi-keyword search:
+   claude-code-indexer search auth user login  # OR search
+   claude-code-indexer search db conn --mode all # AND search
+
+3. Architecture analysis:
+   claude-code-indexer enhanced --layer service
+   claude-code-indexer critical --limit 10
+
+🐛 ERROR REPORTING for LLMs:
+If you encounter errors, create GitHub issue:
+
+gh issue create --repo tuannx/claude-prompts \\
+  --title "[Bug] Error description" \\
+  --body "Error details..." \\
+  --label bug,auto-reported
+
+📊 PERFORMANCE:
+- Fresh index: ~5s for 1000+ files
+- Cached queries: ~0.1s (64x faster)
+- Enhancement: ~1000 nodes/sec
+
+🎯 BEST PRACTICES:
+1. Always run 'index' first on new projects
+2. Use 'stats' to verify indexing success
+3. Start 'enhance' with --limit 5-10
+4. Report issues to help improve the tool
+
+📝 More info: https://github.com/tuannx/claude-prompts
+"""
+    console.print(guide)
 
 
 def main():

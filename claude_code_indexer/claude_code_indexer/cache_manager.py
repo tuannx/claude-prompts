@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Caching system for faster re-indexing
+Caching system for faster re-indexing with integrated memory cache
 """
 
 import os
@@ -14,6 +14,8 @@ from dataclasses import dataclass, asdict
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from .logger import log_info
+from .memory_cache import MemoryCache, CachePolicy
+from .cache_utils import CacheKeyGenerator
 
 
 @dataclass
@@ -32,9 +34,10 @@ class FileCache:
 
 
 class CacheManager:
-    """Manage file-level caching for faster re-indexing"""
+    """Manage file-level caching with integrated memory cache for faster re-indexing"""
     
-    def __init__(self, project_path: Optional[Path] = None, cache_dir: Optional[str] = None):
+    def __init__(self, project_path: Optional[Path] = None, cache_dir: Optional[str] = None,
+                 enable_memory_cache: bool = True, memory_cache_mb: int = 100):
         # Use centralized storage manager
         from .storage_manager import get_storage_manager
         storage = get_storage_manager()
@@ -53,6 +56,20 @@ class CacheManager:
         
         self.cache_db = self.cache_dir / "file_cache.db"
         self._init_cache_db()
+        
+        # Initialize memory cache if enabled
+        self.enable_memory_cache = enable_memory_cache
+        if enable_memory_cache:
+            self.memory_cache = MemoryCache(
+                max_size_mb=memory_cache_mb,
+                default_ttl_days=3.0,
+                access_ttl_days=3.0,
+                cleanup_interval_seconds=300
+            )
+            self.cache_policy = CachePolicy()
+        else:
+            self.memory_cache = None
+            self.cache_policy = None
     
     def _init_cache_db(self):
         """Initialize cache database"""
@@ -105,7 +122,14 @@ class CacheManager:
             return ""
     
     def is_file_cached(self, file_path: str) -> bool:
-        """Check if file is cached and up-to-date"""
+        """Check if file is cached and up-to-date (memory or disk)"""
+        # Check memory cache first if enabled
+        if self.enable_memory_cache and self.memory_cache:
+            cache_key = CacheKeyGenerator.file_key(file_path)
+            if self.memory_cache.get(cache_key) is not None:
+                return True
+        
+        # Check disk cache
         try:
             stat = os.stat(file_path)
             current_hash = self.get_file_hash(file_path)
@@ -132,7 +156,18 @@ class CacheManager:
             return False
     
     def get_cached_result(self, file_path: str) -> Optional[FileCache]:
-        """Get cached processing result for file"""
+        """Get cached processing result for file (memory first, then disk)"""
+        # Try memory cache first if enabled
+        if self.enable_memory_cache and self.memory_cache:
+            cache_key = CacheKeyGenerator.file_key(file_path)
+            memory_result = self.memory_cache.get(cache_key)
+            if memory_result:
+                # Convert dict back to FileCache if needed
+                if isinstance(memory_result, dict):
+                    return FileCache(**memory_result)
+                return memory_result
+        
+        # Fall back to disk cache
         if not self.is_file_cached(file_path):
             return None
         
@@ -150,7 +185,18 @@ class CacheManager:
             
             if result:
                 cache_data = json.loads(result[0])
-                return FileCache(**cache_data)
+                file_cache = FileCache(**cache_data)
+                
+                # Warm memory cache with disk data
+                if self.enable_memory_cache and self.memory_cache:
+                    cache_key = CacheKeyGenerator.file_key(file_path)
+                    self.memory_cache.put(
+                        cache_key, 
+                        asdict(file_cache),
+                        entity_type="file"
+                    )
+                
+                return file_cache
             
             return None
             
@@ -159,7 +205,7 @@ class CacheManager:
     
     def cache_file_result(self, file_path: str, nodes: Dict, edges: List, 
                          patterns: List, libraries: Dict, infrastructure: Dict):
-        """Cache processing result for file"""
+        """Cache processing result for file (both memory and disk)"""
         try:
             stat = os.stat(file_path)
             file_hash = self.get_file_hash(file_path)
@@ -190,6 +236,17 @@ class CacheManager:
                 return obj
             
             cache_dict = convert_sets(cache_dict)
+            
+            # Cache in memory if enabled
+            if self.enable_memory_cache and self.memory_cache:
+                cache_key = CacheKeyGenerator.file_key(file_path)
+                self.memory_cache.put(
+                    cache_key,
+                    cache_dict,
+                    entity_type="file"
+                )
+            
+            # Also cache to disk for persistence
             cache_data = json.dumps(cache_dict).encode('utf-8')
             
             conn = sqlite3.connect(str(self.cache_db))
@@ -233,7 +290,8 @@ class CacheManager:
             pass
     
     def get_cache_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
+        """Get cache statistics including memory cache"""
+        disk_stats = {}
         try:
             conn = sqlite3.connect(str(self.cache_db))
             cursor = conn.cursor()
@@ -254,7 +312,7 @@ class CacheManager:
             
             cache_db_size = self.cache_db.stat().st_size
             
-            return {
+            disk_stats = {
                 'total_entries': total_entries,
                 'recent_entries': recent_entries,
                 'total_file_size': total_size,
@@ -263,24 +321,55 @@ class CacheManager:
             }
             
         except (sqlite3.Error, OSError):
-            return {
+            disk_stats = {
                 'total_entries': 0,
                 'recent_entries': 0,
                 'total_file_size': 0,
                 'cache_db_size': 0,
                 'cache_dir': str(self.cache_dir)
             }
+        
+        # Include memory cache stats if enabled
+        if self.enable_memory_cache and self.memory_cache:
+            memory_stats = self.memory_cache.get_stats()
+            return {
+                'disk': disk_stats,
+                'memory': memory_stats,
+                'combined': {
+                    'total_entries': disk_stats['total_entries'],
+                    'memory_hit_rate': memory_stats['hit_rate'],
+                    'memory_size_mb': memory_stats['size_mb'],
+                    'cache_dir': str(self.cache_dir)
+                }
+            }
+        else:
+            return disk_stats
     
     def print_cache_stats(self):
         """Print cache statistics"""
         stats = self.get_cache_stats()
         
-        log_info(f"💾 Cache Statistics:")
-        log_info(f"   Total entries: {stats['total_entries']}")
-        log_info(f"   Recent (24h): {stats['recent_entries']}")
-        log_info(f"   Total file size: {stats['total_file_size'] / 1024 / 1024:.1f} MB")
-        log_info(f"   Cache DB size: {stats['cache_db_size'] / 1024:.1f} KB")
-        log_info(f"   Cache location: {stats['cache_dir']}")
+        if isinstance(stats, dict) and 'disk' in stats:
+            # We have both memory and disk stats
+            log_info(f"💾 Cache Statistics:")
+            log_info(f"   Memory Cache:")
+            log_info(f"     Hit rate: {stats['memory']['hit_rate']:.1f}%")
+            log_info(f"     Size: {stats['memory']['size_mb']:.1f} MB / {stats['memory']['max_size_mb']} MB")
+            log_info(f"     Entries: {stats['memory']['entry_count']}")
+            log_info(f"   Disk Cache:")
+            log_info(f"     Total entries: {stats['disk']['total_entries']}")
+            log_info(f"     Recent (24h): {stats['disk']['recent_entries']}")
+            log_info(f"     Total file size: {stats['disk']['total_file_size'] / 1024 / 1024:.1f} MB")
+            log_info(f"     Cache DB size: {stats['disk']['cache_db_size'] / 1024:.1f} KB")
+            log_info(f"   Cache location: {stats['disk']['cache_dir']}")
+        else:
+            # Only disk stats (backward compatibility)
+            log_info(f"💾 Cache Statistics:")
+            log_info(f"   Total entries: {stats['total_entries']}")
+            log_info(f"   Recent (24h): {stats['recent_entries']}")
+            log_info(f"   Total file size: {stats['total_file_size'] / 1024 / 1024:.1f} MB")
+            log_info(f"   Cache DB size: {stats['cache_db_size'] / 1024:.1f} KB")
+            log_info(f"   Cache location: {stats['cache_dir']}")
 
 
 class IncrementalIndexer:

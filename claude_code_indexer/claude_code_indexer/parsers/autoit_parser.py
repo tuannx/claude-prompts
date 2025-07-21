@@ -86,6 +86,17 @@ class AutoItParser(BaseParser):
         """Parse an AutoIt file and return nodes and relationships"""
         self.parse_errors = []  # Reset errors for this file
         
+        # Check if file exists first
+        if not os.path.exists(file_path):
+            return ParseResult(
+                file_path=file_path,
+                language=self.language,
+                nodes={},
+                relationships=[],
+                success=False,
+                error_message="File not found"
+            )
+        
         if self._is_binary_file(file_path):
             return ParseResult(
                 file_path=file_path,
@@ -237,7 +248,7 @@ class AutoItParser(BaseParser):
                     summary=f"{scope.title()} variable: {var_name}",
                     line_number=content[:match.start()].count('\n') + 1,
                     language=self.language,
-                    attributes={'scope': scope}
+                    scope=scope
                 )
                 nodes[var_node.id] = var_node
                 
@@ -280,7 +291,7 @@ class AutoItParser(BaseParser):
                 summary=f"GUI Control: {ctrl_type}",
                 line_number=content[:match.start()].count('\n') + 1,
                 language=self.language,
-                attributes={'control_type': ctrl_type}
+                control_type=ctrl_type
             )
             nodes[ctrl_node.id] = ctrl_node
             
@@ -308,7 +319,7 @@ class AutoItParser(BaseParser):
                     summary=f"COM Object {action}",
                     line_number=content[:match.start()].count('\n') + 1,
                     language=self.language,
-                    attributes={'action': action}
+                    action=action
                 )
                 nodes[com_node.id] = com_node
                 

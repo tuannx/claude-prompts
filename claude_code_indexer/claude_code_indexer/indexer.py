@@ -9,7 +9,7 @@ import sqlite3
 import json
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple, Set, Optional
+from typing import Dict, List, Tuple, Set, Optional, Any
 import networkx as nx
 import pandas as pd
 from ensmallen import Graph
@@ -25,6 +25,7 @@ from .ignore_handler import IgnoreHandler
 from .parsers import create_default_parser, ParseResult
 from .storage_manager import get_storage_manager
 from .security import validate_sql_identifier, SecurityError
+from .llm_metadata_enhancer import LLMMetadataEnhancer
 
 
 class CodeGraphIndexer:
@@ -57,6 +58,7 @@ class CodeGraphIndexer:
         self.infrastructure_detector = InfrastructureDetector()
         self.weight_calculator = WeightCalculator()
         self.all_files_content = {}  # Store file contents for weight calculation
+        self.infrastructure_by_file = {}  # Store infrastructure data by file path
         
         # Multi-language parser system
         self.parser = create_default_parser()
@@ -70,7 +72,12 @@ class CodeGraphIndexer:
         self.parsing_errors = []
         
         if self.use_cache:
-            self.cache_manager = CacheManager(project_path=self.project_path)
+            # Initialize cache manager with integrated memory cache
+            self.cache_manager = CacheManager(
+                project_path=self.project_path,
+                enable_memory_cache=True,
+                memory_cache_mb=100  # 100MB default
+            )
             self.incremental_indexer = IncrementalIndexer(self.cache_manager)
         
         if self.enable_optimizations:
@@ -78,6 +85,9 @@ class CodeGraphIndexer:
         
         self.parallel_processor = ParallelFileProcessor(max_workers=parallel_workers)
         self.processing_stats = ProcessingStats()
+        
+        # Initialize LLM metadata enhancer (lazy initialization)
+        self._llm_enhancer = None
         
         self.init_db()
     
@@ -395,6 +405,10 @@ class CodeGraphIndexer:
         infrastructure = self.infrastructure_detector.detect_infrastructure(tree, file_path, content)
         self._store_infrastructure(infrastructure, file_path)
         
+        # Store infrastructure data for tagging
+        if any(components for components in infrastructure.values()):
+            self.infrastructure_by_file[file_path] = infrastructure
+        
         return self.nodes
     
     def _create_node(self, node_type: str, name: str, path: str, summary: str) -> int:
@@ -540,6 +554,45 @@ class CodeGraphIndexer:
                     tags.append('test')
                 if self.nodes[node_id]['node_type'] == 'file':
                     tags.append('module')
+                
+                # Add infrastructure and DevOps tags based on file path
+                file_path = self.nodes[node_id].get('path', '')
+                if file_path:
+                    # Check if this node is from a file with infrastructure
+                    if file_path in self.infrastructure_by_file:
+                        infra_data = self.infrastructure_by_file[file_path]
+                        
+                        # Add infrastructure tags
+                        if infra_data.get('databases'):
+                            tags.append('infrastructure:database')
+                        if infra_data.get('apis'):
+                            tags.append('infrastructure:api')
+                        if infra_data.get('message_queues'):
+                            tags.append('infrastructure:messaging')
+                        if infra_data.get('cloud_services'):
+                            tags.append('infrastructure:cloud')
+                            
+                        # Add specific environment/profile tags
+                        for comp in infra_data.get('configuration', []):
+                            if comp.name == 'environment':
+                                tags.append('devops:environment')
+                                # Try to detect specific environments
+                                if 'production' in str(comp.connections).lower():
+                                    tags.append('profile:production')
+                                if 'staging' in str(comp.connections).lower():
+                                    tags.append('profile:staging')
+                                if 'development' in str(comp.connections).lower():
+                                    tags.append('profile:development')
+                            elif comp.name == 'secrets':
+                                tags.append('devops:security')
+                        
+                        # Add DevOps tags
+                        if any('docker' in str(comp).lower() for comp in infra_data.values()):
+                            tags.append('devops:containerization')
+                        if any('kubernetes' in str(comp).lower() or 'k8s' in str(comp).lower() for comp in infra_data.values()):
+                            tags.append('devops:orchestration')
+                        if any('jenkins' in str(comp).lower() or 'github' in str(comp).lower() for comp in infra_data.values()):
+                            tags.append('devops:ci/cd')
                 
                 self.nodes[node_id]['relevance_tags'] = tags
             else:
@@ -937,26 +990,36 @@ class CodeGraphIndexer:
         if not infrastructure:
             return
             
+        # Check if any category has components
+        has_components = any(components for components in infrastructure.values())
+        if not has_components:
+            return
+            
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        for category, components in infrastructure.items():
-            for component in components:
-                cursor.execute('''
-                INSERT INTO infrastructure (file_path, component_type, name, technology, configuration, usage_frequency, connections)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    file_path,
-                    component.component_type,
-                    component.name,
-                    component.technology,
-                    json.dumps(component.configuration),
-                    component.usage_frequency,
-                    json.dumps(component.connections)
-                ))
-        
-        conn.commit()
-        conn.close()
+        try:
+            for category, components in infrastructure.items():
+                for component in components:
+                    cursor.execute('''
+                    INSERT INTO infrastructure (file_path, component_type, name, technology, configuration, usage_frequency, connections)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        file_path,
+                        component.component_type,
+                        component.name,
+                        component.technology,
+                        json.dumps(component.configuration),
+                        component.usage_frequency,
+                        json.dumps(component.connections)
+                    ))
+            
+            conn.commit()
+        except Exception as e:
+            print(f"Error storing infrastructure: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
     
     def _migrate_database_schema(self, cursor):
         """Migrate existing database schema to support new columns"""
@@ -1066,3 +1129,121 @@ class CodeGraphIndexer:
         except Exception as e:
             log_error(f"Unexpected error: {e}")
             return None
+    
+    @property
+    def llm_enhancer(self) -> LLMMetadataEnhancer:
+        """Get or create LLM metadata enhancer (lazy initialization)"""
+        if self._llm_enhancer is None:
+            self._llm_enhancer = LLMMetadataEnhancer(self.db_path)
+        return self._llm_enhancer
+    
+    def enhance_metadata(self, limit: Optional[int] = None, force_refresh: bool = False) -> Dict[str, Any]:
+        """
+        Enhance metadata using LLM analysis
+        
+        Args:
+            limit: Limit number of nodes to analyze
+            force_refresh: Force re-analysis even if cached
+            
+        Returns:
+            Analysis summary with statistics
+        """
+        log_info("🤖 Starting LLM-driven metadata enhancement...")
+        return self.llm_enhancer.analyze_codebase(limit=limit, force_refresh=force_refresh)
+    
+    def query_enhanced_nodes(self, 
+                           architectural_layer: Optional[str] = None,
+                           business_domain: Optional[str] = None,
+                           criticality_level: Optional[str] = None,
+                           min_complexity: Optional[float] = None,
+                           limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Query nodes with enhanced metadata
+        
+        Args:
+            architectural_layer: Filter by layer (controller, service, model, etc.)
+            business_domain: Filter by domain (authentication, payment, etc.)
+            criticality_level: Filter by criticality (critical, important, normal, low)
+            min_complexity: Filter by minimum complexity score
+            limit: Maximum results to return
+            
+        Returns:
+            List of enhanced node data
+        """
+        return self.llm_enhancer.get_enhanced_nodes(
+            architectural_layer=architectural_layer,
+            business_domain=business_domain,
+            criticality_level=criticality_level,
+            min_complexity=min_complexity,
+            limit=limit
+        )
+    
+    def update_node_metadata(self, node_id: int, updates: Dict[str, Any]) -> bool:
+        """
+        Update enhanced metadata for a specific node
+        
+        Args:
+            node_id: ID of the node to update
+            updates: Dictionary of field updates
+            
+        Returns:
+            True if successful
+        """
+        return self.llm_enhancer.update_node_metadata(node_id, updates)
+    
+    def get_analysis_insights(self) -> Dict[str, Any]:
+        """
+        Get high-level insights from enhanced metadata analysis
+        
+        Returns:
+            Comprehensive insights about codebase health and architecture
+        """
+        return self.llm_enhancer.get_analysis_insights()
+    
+    def get_complexity_hotspots(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Get nodes with highest complexity scores
+        
+        Args:
+            limit: Maximum number of hotspots to return
+            
+        Returns:
+            List of complexity hotspots
+        """
+        insights = self.llm_enhancer.get_analysis_insights()
+        return insights.get("complexity_hotspots", [])[:limit]
+    
+    def get_critical_components(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get most critical components in the codebase
+        
+        Args:
+            limit: Maximum number of components to return
+            
+        Returns:
+            List of critical components
+        """
+        return self.query_enhanced_nodes(
+            criticality_level="critical",
+            limit=limit
+        )
+    
+    def get_architectural_overview(self) -> Dict[str, Any]:
+        """
+        Get architectural overview of the codebase
+        
+        Returns:
+            Architectural insights and layer distribution
+        """
+        insights = self.llm_enhancer.get_analysis_insights()
+        return insights.get("architectural_overview", {})
+    
+    def get_codebase_health(self) -> Dict[str, Any]:
+        """
+        Get overall codebase health assessment
+        
+        Returns:
+            Health metrics and recommendations
+        """
+        insights = self.llm_enhancer.get_analysis_insights()
+        return insights.get("codebase_health", {})
