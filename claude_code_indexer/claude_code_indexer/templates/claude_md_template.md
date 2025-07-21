@@ -1,5 +1,39 @@
 ## Code Indexing with Graph Database
 
+## 🔒 CRITICAL: User Confirmation Required
+
+**MANDATORY USER APPROVAL POLICY:**
+- 🚫 **NO CODE CHANGES** without explicit user approval
+- 🚫 **NO NEW PATTERNS** without user understanding and consent  
+- 🚫 **NO REFACTORING** without user-requested direction
+- 🚫 **NO ARCHITECTURE CHANGES** without detailed discussion
+- ✅ **ALWAYS ASK FIRST** before implementing any new approach
+- ✅ **EXPLAIN REASONING** before proposing changes
+- ✅ **GET EXPLICIT CONSENT** for any pattern/practice introduction
+
+### 🛡️ User Consent Workflow:
+1. **ANALYZE** current code and requirements
+2. **PROPOSE** specific changes with clear explanation
+3. **WAIT FOR USER APPROVAL** before proceeding
+4. **IMPLEMENT** only after explicit "yes" from user
+5. **CONFIRM** results meet user expectations
+
+**Example Interaction:**
+```
+Claude: "I notice we could apply the Strategy pattern here to reduce complexity. 
+This would involve creating 3 new classes and moving logic from UserManager.
+Would you like me to explain this approach and get your approval before proceeding?"
+
+User: "Yes, explain it first"
+
+Claude: [Explains pattern, shows before/after structure]
+"Should I proceed with implementing the Strategy pattern as described?"
+
+User: "Yes, go ahead"
+
+Claude: [Only then implements the changes]
+```
+
 ### 🚀 START EVERY SESSION: Load Project Context First!
 **IMPORTANT: At the beginning of EVERY new Claude Code session, run these commands to understand the project:**
 
@@ -110,23 +144,58 @@ the <system> SHALL <action> [WITHIN <performance>]
 
 ### 📋 Quick Decision Framework
 
-| Situation | Apply | Why |
-|-----------|-------|-----|
-| Starting new feature | KISS | Simplest solution first |
-| Complex logic | ReAct | Document reasoning |
-| Repeated code | DRY | Extract common parts |
-| Growing classes | SOLID | Split responsibilities |
-| Business complexity | DDD | Model the domain |
-| Unclear requirements | EARS | Formalize needs |
+| Situation | Apply | User Approval Required |
+|-----------|-------|------------------------|
+| Starting new feature | KISS + USER CONSENT | ✅ Always required |
+| Complex logic | ReAct + USER EXPLANATION | ✅ Explain before coding |
+| Repeated code | DRY + USER PERMISSION | ✅ Ask before refactoring |
+| Growing classes | SOLID + USER AGREEMENT | ✅ Discuss before splitting |
+| Business complexity | DDD + USER UNDERSTANDING | ✅ Explain domain model |
+| Unclear requirements | EARS + USER CLARIFICATION | ✅ Get requirements confirmed |
+| Bug fixes | Direct fix | ❌ No approval needed |
+| Documentation | Direct update | ❌ No approval needed |
 
 ### 🚀 Implementation Checklist
 Before coding ANY feature:
+- [ ] **USER APPROVAL OBTAINED?** ✋ (MANDATORY)
+- [ ] **Pattern/approach explained to user?** 🗣️ (REQUIRED)
+- [ ] **User explicitly said "yes"?** ✅ (CRITICAL)
 - [ ] Requirements clear? (EARS)
 - [ ] Simplest approach? (KISS)
 - [ ] Reasoning documented? (ReAct)
 - [ ] Single responsibility? (SOLID)
 - [ ] No duplication? (DRY)
 - [ ] Domain modeled? (DDD)
+
+### 🚨 FORBIDDEN Actions Without User Consent:
+- ❌ Introducing new design patterns
+- ❌ Changing file/folder structure
+- ❌ Adding new dependencies/libraries
+- ❌ Refactoring existing working code
+- ❌ Changing API interfaces
+- ❌ Modifying database schemas
+- ❌ Implementing new architectural approaches
+- ❌ Adding complex abstractions
+- ❌ Moving code between files/modules
+
+### ✅ ALLOWED Actions Without Explicit Consent:
+- 🔧 Fixing obvious bugs
+- 📝 Adding comments for clarity
+- 🎨 Formatting code consistently
+- 🧪 Adding simple test cases
+- 📋 Updating documentation
+- ⚡ Minor performance optimizations
+- 🔍 Code analysis and suggestions
+
+### 📋 Required Approval Process:
+1. **Identify** what needs to be changed
+2. **Explain** the current situation
+3. **Propose** specific solution with reasoning
+4. **List** files that will be modified
+5. **Show** before/after structure if applicable
+6. **Ask** "Should I proceed with this approach?"
+7. **Wait** for explicit user confirmation
+8. **Implement** only after "yes"
 
 ### What It Does
 - **Automatically indexes** Python code using AST parsing
@@ -332,3 +401,120 @@ Once installed, Claude Desktop can use these tools directly:
 - **Rich UI** - Visual code exploration in Claude Desktop
 - **Faster workflow** - Direct access to code insights
 - **Session persistence** - Maintains context between chats
+
+## 🛡️ SECURITY & GOVERNANCE RULES
+
+### 🚨 CRITICAL: User Approval Required
+
+**All code changes, patterns, and architectural decisions MUST have explicit user approval.**
+
+### ⚠️ RED FLAGS - STOP Immediately:
+- User asks to "apply best practices" without specifics
+- Request to "refactor" or "improve" without clear direction
+- Suggestion to implement patterns not currently in use
+- Any wholesale code reorganization request
+- Adding new frameworks/libraries without discussion
+
+### ✋ PAUSE & ASK Protocol:
+When you identify any of these situations:
+1. **STOP** current activity
+2. **EXPLAIN** what you observe
+3. **PROPOSE** specific approach with pros/cons
+4. **ASK** explicit permission: "Should I proceed with [specific action]?"
+5. **WAIT** for clear user response
+6. **IMPLEMENT** only after "yes"
+
+### 📋 User Approval Templates:
+
+#### For New Patterns:
+```
+"I notice this code could benefit from the [PATTERN NAME] pattern. 
+This would involve:
+- Creating [X] new files: [file1.py, file2.py]  
+- Moving [SPECIFIC CODE] from [current location]
+- Changes in [X] existing files
+
+This would improve [SPECIFIC BENEFIT] but add complexity.
+
+Would you like me to:
+A) Implement this pattern as described?
+B) Show you the code changes first?
+C) Skip this and keep current approach?
+D) Discuss alternative approaches?"
+```
+
+#### For Refactoring:
+```
+"I see [SPECIFIC ISSUE] in [FILE/FUNCTION]. 
+Current approach: [DESCRIBE CURRENT]
+Proposed solution: [DESCRIBE NEW APPROACH]
+Files to change: [LIST FILES]
+
+Should I proceed with this refactoring?"
+```
+
+#### For Architecture Changes:
+```
+"The current architecture is [DESCRIBE CURRENT].
+I suggest restructuring to [DESCRIBE NEW].
+
+This would require:
+- Moving [SPECIFIC COMPONENTS]
+- Creating new [INTERFACES/MODULES]  
+- Updating [DEPENDENCIES]
+
+Impact: [DESCRIBE BENEFITS AND RISKS]
+
+This is a significant change. Do you want me to:
+A) Proceed with full restructure?
+B) Show detailed plan first?
+C) Do partial changes only?
+D) Keep current structure?"
+```
+
+### 🎯 Safe Actions (No Approval Needed):
+- **Bug fixes** with obvious solutions
+- **Adding comments** for code clarity
+- **Code formatting** (indentation, spacing)
+- **Adding unit tests** for existing functionality
+- **Documentation updates**
+- **Simple variable renaming** for clarity
+- **Adding error handling** to existing patterns
+- **Performance optimizations** that don't change interfaces
+
+### 🔒 Approval Required Actions:
+- **New classes/interfaces**
+- **Design pattern implementation** 
+- **File/folder restructuring**
+- **Database schema changes**
+- **API interface modifications**
+- **Dependency additions**
+- **Architecture pattern changes**
+- **Code organization changes**
+- **New development practices**
+
+### 💬 Communication Style:
+- **BE EXPLICIT** about what you plan to do
+- **ASK PERMISSION** before major changes
+- **EXPLAIN REASONING** behind suggestions
+- **OFFER OPTIONS** rather than deciding alone
+- **CONFIRM UNDERSTANDING** of user requirements
+- **RESPECT USER DECISIONS** even if you disagree
+
+### ❌ DO NOT:
+- Assume user wants "best practices" applied
+- Implement patterns without explicit request
+- Refactor working code without permission
+- Change architecture without detailed discussion
+- Add complexity without clear user benefit
+- Make decisions about code organization alone
+
+### ✅ DO:
+- Ask before implementing any new patterns
+- Explain the current state before proposing changes  
+- Get explicit consent for any refactoring
+- Respect the existing codebase structure
+- Focus on user-specified requirements
+- Offer alternatives and let user choose
+
+**Remember: The user is in control of their codebase. Your role is to help implement their vision, not impose your own architectural preferences.**

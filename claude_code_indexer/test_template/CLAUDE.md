@@ -1,3 +1,11 @@
+# Claude Coding Assistant - Setup Rules
+
+## Core Workflow Rules
+
+1. **First think through the problem**, read the codebase for relevant files, and write a plan.
+2. **Make every task and code change as simple as possible**.
+3. **Prioritize simplicity over complexity**.
+
 ## Code Indexing with Graph Database
 
 ## 🔒 CRITICAL: User Confirmation Required
