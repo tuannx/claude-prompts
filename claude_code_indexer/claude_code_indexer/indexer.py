@@ -302,114 +302,6 @@ class CodeGraphIndexer:
         
         return self.nodes
     
-    def parse_python_file(self, file_path: str) -> Dict:
-        """Parse a Python file and extract code entities"""
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except UnicodeDecodeError:
-            # Try different encodings
-            for encoding in ['latin-1', 'cp1252', 'utf-8-sig']:
-                try:
-                    with open(file_path, 'r', encoding=encoding) as f:
-                        content = f.read()
-                    break
-                except UnicodeDecodeError:
-                    continue
-            else:
-                log_warning(f"Could not decode {file_path}, skipping")
-                return {}
-        
-        # Store content for weight calculation
-        self.all_files_content[file_path] = content
-        
-        # Check for null bytes (binary files)
-        if '\x00' in content:
-            log_warning(f"Binary file detected {file_path}, skipping")
-            return {}
-        
-        try:
-            tree = ast.parse(content)
-        except (SyntaxError, ValueError) as e:
-            log_warning(f"Cannot parse {file_path}: {e}")
-            return {}
-        
-        # Create file node
-        file_node_id = self._create_node(
-            node_type='file',
-            name=os.path.basename(file_path),
-            path=file_path,
-            summary=f"Python file: {os.path.basename(file_path)}"
-        )
-        
-        # Extract imports, classes, and functions
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    import_node_id = self._create_node(
-                        node_type='import',
-                        name=alias.name,
-                        path=file_path,
-                        summary=f"Import: {alias.name}"
-                    )
-                    self.edges.append((file_node_id, import_node_id, 'imports'))
-            
-            elif isinstance(node, ast.ImportFrom):
-                if node.module:
-                    import_node_id = self._create_node(
-                        node_type='import',
-                        name=node.module,
-                        path=file_path,
-                        summary=f"Import from: {node.module}"
-                    )
-                    self.edges.append((file_node_id, import_node_id, 'imports'))
-            
-            elif isinstance(node, ast.ClassDef):
-                class_node_id = self._create_node(
-                    node_type='class',
-                    name=node.name,
-                    path=file_path,
-                    summary=f"Class: {node.name}"
-                )
-                self.edges.append((file_node_id, class_node_id, 'contains'))
-                
-                # Extract methods
-                for item in node.body:
-                    if isinstance(item, ast.FunctionDef):
-                        method_node_id = self._create_node(
-                            node_type='method',
-                            name=f"{node.name}.{item.name}",
-                            path=file_path,
-                            summary=f"Method: {node.name}.{item.name}"
-                        )
-                        self.edges.append((class_node_id, method_node_id, 'contains'))
-            
-            elif isinstance(node, ast.FunctionDef):
-                func_node_id = self._create_node(
-                    node_type='function',
-                    name=node.name,
-                    path=file_path,
-                    summary=f"Function: {node.name}"
-                )
-                self.edges.append((file_node_id, func_node_id, 'contains'))
-        
-        # Detect patterns
-        patterns = self.pattern_detector.detect_patterns(tree, file_path)
-        self._store_patterns(patterns, file_path)
-        
-        # Detect libraries
-        libraries = self.library_detector.detect_libraries(tree, file_path, content)
-        self._store_libraries(libraries, file_path)
-        
-        # Detect infrastructure
-        infrastructure = self.infrastructure_detector.detect_infrastructure(tree, file_path, content)
-        self._store_infrastructure(infrastructure, file_path)
-        
-        # Store infrastructure data for tagging
-        if any(components for components in infrastructure.values()):
-            self.infrastructure_by_file[file_path] = infrastructure
-        
-        return self.nodes
     
     def _create_node(self, node_type: str, name: str, path: str, summary: str) -> int:
         """Create a node and return its ID"""
@@ -1119,16 +1011,6 @@ class CodeGraphIndexer:
             except sqlite3.Error as e:
                 log_warning(f"Could not create table '{table_name}': {e}")
     
-    def _safe_database_operation(self, operation_func, *args, **kwargs):
-        """Execute database operation with error handling"""
-        try:
-            return operation_func(*args, **kwargs)
-        except sqlite3.Error as e:
-            log_error(f"Database error: {e}")
-            return None
-        except Exception as e:
-            log_error(f"Unexpected error: {e}")
-            return None
     
     @property
     def llm_enhancer(self) -> LLMMetadataEnhancer:

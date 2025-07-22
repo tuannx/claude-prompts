@@ -94,10 +94,6 @@ class HybridCache:
         
         return None
     
-    async def get_async(self, key: str, entity_type: str = "unknown") -> Optional[Any]:
-        """Async version of get"""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, self.get, key, entity_type)
     
     def put(self, key: str, value: Any, entity_type: str = "unknown") -> bool:
         """
@@ -143,10 +139,6 @@ class HybridCache:
         
         return memory_success or disk_success
     
-    async def put_async(self, key: str, value: Any, entity_type: str = "unknown") -> bool:
-        """Async version of put"""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, self.put, key, value, entity_type)
     
     def invalidate(self, key: str) -> bool:
         """Remove entry from both caches"""

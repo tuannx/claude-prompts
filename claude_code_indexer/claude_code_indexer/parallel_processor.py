@@ -70,24 +70,6 @@ class ParallelFileProcessor:
         
         return results
     
-    async def process_files_async(self, file_paths: List[str]) -> List[FileProcessingResult]:
-        """Process files asynchronously (for I/O bound operations)"""
-        log_info(f"⚡ Processing {len(file_paths)} files asynchronously...")
-        
-        semaphore = asyncio.Semaphore(self.max_workers)
-        
-        async def process_with_semaphore(file_path):
-            async with semaphore:
-                return await asyncio.get_event_loop().run_in_executor(
-                    None, self._process_single_file, file_path
-                )
-        
-        tasks = [process_with_semaphore(fp) for fp in file_paths]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Filter out exceptions
-        valid_results = [r for r in results if isinstance(r, FileProcessingResult)]
-        return valid_results
     
     def _process_single_file(self, file_path: str) -> FileProcessingResult:
         """Process a single code file using multi-language parser"""

@@ -762,6 +762,7 @@ def set_interval(project, interval):
         # Set default interval
         service.set_default_interval(interval)
         console.print(f"✅ [green]Set default background indexing interval to {interval}s[/green]")
+@cli.command()
 def sync():
     """Sync CLAUDE.md with latest template"""
     updater = Updater()
