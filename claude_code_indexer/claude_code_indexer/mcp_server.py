@@ -95,7 +95,7 @@ def index_codebase(project_path: Optional[str] = None, path: Optional[str] = Non
     
     # Get project-specific indexer
     indexer = project_manager.get_indexer(project_path, workers=workers)
-    project_dir = project_manager.storage.get_project_storage_dir(project_path)
+    project_dir = project_manager.storage.get_project_dir(Path(project_path))
     
     # Run indexing
     start_time = datetime.now()
@@ -127,7 +127,7 @@ def get_project_stats(project_path: str) -> str:
     """
     # Validate project path
     project_path = os.path.abspath(os.path.expanduser(project_path))
-    project_dir = project_manager.storage.get_project_storage_dir(project_path)
+    project_dir = project_manager.storage.get_project_dir(Path(project_path))
     db_path = project_dir / "code_index.db"
     
     if not db_path.exists():
@@ -172,7 +172,7 @@ def query_important_code(project_path: str, limit: int = 20, node_type: Optional
     """
     # Validate project path
     project_path = os.path.abspath(os.path.expanduser(project_path))
-    project_dir = project_manager.storage.get_project_storage_dir(project_path)
+    project_dir = project_manager.storage.get_project_dir(Path(project_path))
     db_path = project_dir / "code_index.db"
     
     if not db_path.exists():
@@ -234,7 +234,7 @@ def search_code(project_path: str, terms: str, limit: int = 10, mode: str = "any
     """
     # Validate project path
     project_path = os.path.abspath(os.path.expanduser(project_path))
-    project_dir = project_manager.storage.get_project_storage_dir(project_path)
+    project_dir = project_manager.storage.get_project_dir(Path(project_path))
     db_path = str(project_dir / "code_index.db")
     
     if not os.path.exists(db_path):

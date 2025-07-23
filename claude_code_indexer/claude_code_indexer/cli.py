@@ -19,6 +19,8 @@ from .security import validate_file_path, SecurityError
 from .github_reporter import suggest_github_issue
 from .commands.god_mode import god_mode_group
 from .cli_migrate import migrate as migrate_command
+from .crash_handler import install_crash_handler
+from .commands.crash import crash as crash_group
 
 
 console = Console()
@@ -1248,6 +1250,9 @@ cli.add_command(god_mode_group)
 # Register migrate command
 cli.add_command(migrate_command)
 
+# Register crash management commands
+cli.add_command(crash_group)
+
 
 @cli.command(name='llm-guide')
 def llm_guide():
@@ -1308,6 +1313,9 @@ gh issue create --repo tuannx/claude-prompts \\
 
 def main():
     """Main CLI entry point"""
+    # Install crash handler first
+    install_crash_handler()
+    
     # Check for updates on startup (non-blocking)
     check_and_notify_update()
     cli()
