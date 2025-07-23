@@ -10,7 +10,7 @@ A powerful code indexing tool that uses graph databases to analyze and understan
 - 🎯 **Relevance tagging** for different code entity types
 - 📈 **Network analysis** with PageRank and centrality measures
 - 🚀 **Easy CLI interface** for quick setup and usage
-- 🤖 **MCP Integration** for direct Claude Desktop support (v1.3.0+)
+- 🤖 **MCP Integration** for direct Claude Desktop/Code support (v1.3.0+, Claude Code v1.14.0+)
 - 🔬 **Multi-keyword search** with AND/OR logic (v1.3.0+)
 - 📂 **Project-based indexing** for MCP with separate databases (v1.4.0+)
 - 🚫 **Smart ignore patterns** - auto-ignores node_modules, .git, etc (v1.5.0+)
@@ -20,6 +20,7 @@ A powerful code indexing tool that uses graph databases to analyze and understan
 - ⚡ **High-performance memory cache** - 10-100x faster with 100MB LRU cache (v1.12.0+)
 - 🏗️ **Infrastructure detection** - Auto-detects databases, APIs, cloud services, DevOps tools (v1.13.0+)
 - 🎯 **Professional CLI** - App name and version header on all commands (v1.13.0+)
+- 🔄 **Automatic database migrations** - Seamless schema updates with backup/rollback (v1.14.0+)
 
 ## Installation
 
@@ -29,7 +30,7 @@ A powerful code indexing tool that uses graph databases to analyze and understan
 # Basic installation
 pip install claude-code-indexer
 
-# With MCP support for Claude Desktop
+# With MCP support for Claude Desktop/Code
 pip install 'claude-code-indexer[mcp]'
 ```
 
@@ -269,6 +270,30 @@ Clean up orphaned project indexes.
 claude-code-indexer clean
 ```
 
+### `migrate`
+Manage database schema migrations.
+
+```bash
+# Check and apply migrations
+claude-code-indexer migrate
+
+# Show what would be migrated without applying changes
+claude-code-indexer migrate --dry-run
+
+# Migrate to a specific version
+claude-code-indexer migrate --target-version 1.6.0
+
+# Force migration even if database appears corrupted
+claude-code-indexer migrate --force
+```
+
+The migration system:
+- Automatically detects current database version
+- Creates backups before migration
+- Rolls back on failure
+- Preserves all existing data
+- Supports incremental upgrades through multiple versions
+
 ### `background`
 Manage background indexing service for automatic updates.
 
@@ -345,9 +370,12 @@ After running `claude-code-indexer init`, your `CLAUDE.md` file will include:
 - CLI command reference
 - Usage examples for Claude Code workflows
 
-## MCP Integration for Claude Desktop (v1.3.0+)
+## MCP Integration for Claude Desktop/Code (v1.3.0+)
 
-Direct integration with Claude Desktop using Model Context Protocol:
+Direct integration with Claude Desktop and Claude Code using Model Context Protocol:
+
+**Claude Desktop**: Supported since v1.3.0
+**Claude Code**: Supported since v1.14.0
 
 ### Quick Setup
 
@@ -355,7 +383,7 @@ Direct integration with Claude Desktop using Model Context Protocol:
 # Install with MCP support
 pip install 'claude-code-indexer[mcp]'
 
-# Auto-configure Claude Desktop
+# Auto-configure Claude Desktop/Code (auto-detects which is installed)
 claude-code-indexer mcp install
 
 # Check status
@@ -364,7 +392,7 @@ claude-code-indexer mcp status
 
 ### MCP Tools Available
 
-Once installed, Claude Desktop can directly use:
+Once installed, Claude Desktop or Claude Code can directly use:
 
 #### Core Tools
 - **index_codebase(project_path, workers=4, force=False, custom_ignore=[])**: Index Python projects
@@ -376,6 +404,20 @@ Once installed, Claude Desktop can directly use:
 #### New in v1.5.0
 - **get_ignore_patterns(project_path)**: View active ignore patterns
 - **list_indexed_projects()**: List all indexed projects
+
+### Configuration Paths
+
+The MCP installer automatically detects and configures the appropriate Claude app:
+
+**Claude Desktop**:
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
+
+**Claude Code**:
+- macOS: `~/Library/Application Support/Claude Code/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude Code\claude_desktop_config.json`
+- Linux: `~/.config/Claude Code/claude_desktop_config.json`
 
 ### MCP Usage Examples
 

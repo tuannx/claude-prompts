@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claude-code-indexer"
-version = "1.13.0"
+version = "1.15.0"
 description = "Multi-language code indexing with graph database, supports Python/JavaScript/TypeScript/Java/AutoIt, auto-ignores node_modules/.git, respects .gitignore, multi-keyword search, MCP for Claude Desktop, automated installation"
 readme = "README.md"
 license = {text = "MIT"}

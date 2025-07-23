@@ -26,6 +26,8 @@ from .parsers import create_default_parser, ParseResult
 from .storage_manager import get_storage_manager
 from .security import validate_sql_identifier, SecurityError
 from .llm_metadata_enhancer import LLMMetadataEnhancer
+from .migrations import MigrationManager
+from . import __version__
 
 
 class CodeGraphIndexer:
@@ -93,10 +95,25 @@ class CodeGraphIndexer:
     
     def init_db(self):
         """Initialize SQLite database with schema and handle migrations"""
+        # Run automatic migrations first
+        migration_manager = MigrationManager(self.db_path)
+        
+        # Get target version from package version
+        target_version = self._get_schema_version_from_package()
+        
+        # Perform migration
+        success, message = migration_manager.migrate(target_version)
+        if success:
+            log_info(f"Database migration: {message}")
+        else:
+            log_error(f"Database migration failed: {message}")
+            raise RuntimeError(f"Failed to migrate database: {message}")
+        
+        # Now connect and ensure all tables exist
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # Check if database exists and needs migration
+        # Run legacy migration for compatibility
         self._migrate_database_schema(cursor)
         
         # Create tables
@@ -574,7 +591,7 @@ class CodeGraphIndexer:
                 ('last_indexed', 'datetime("now")'),
                 ('total_nodes', str(len(self.nodes))),
                 ('total_edges', str(len(self.edges))),
-                ('schema_version', '1.1.0')
+                ('schema_version', self._get_schema_version_from_package())
             ]
             
             for key, value in metadata_updates:
@@ -1129,3 +1146,34 @@ class CodeGraphIndexer:
         """
         insights = self.llm_enhancer.get_analysis_insights()
         return insights.get("codebase_health", {})
+    
+    def _get_schema_version_from_package(self) -> str:
+        """
+        Determine the appropriate schema version based on package version.
+        
+        Returns:
+            Schema version string (e.g., '1.14.0')
+        """
+        # Map package versions to schema versions
+        # This allows us to control when schema changes happen
+        package_version = __version__
+        
+        # Extract major.minor.patch
+        try:
+            parts = package_version.split('.')
+            major = int(parts[0])
+            minor = int(parts[1]) if len(parts) > 1 else 0
+            patch = int(parts[2]) if len(parts) > 2 else 0
+            
+            # Determine schema version based on features
+            if major >= 1 and minor >= 14:
+                return '1.14.0'  # LLM enhancement tables (no schema change in 1.15.0)
+            elif major >= 1 and minor >= 6:
+                return '1.6.0'   # Language support
+            elif major >= 1 and minor >= 1:
+                return '1.1.0'   # Pattern detection
+            else:
+                return '1.0.0'   # Basic schema
+        except Exception:
+            # Default to latest schema version
+            return '1.14.0'

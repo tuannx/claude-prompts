@@ -265,7 +265,7 @@ class UserController:
         patterns = detector._detect_mvc(tree, "test.py")
         
         assert len(patterns) >= 1
-        assert any(p.pattern_type == "MVC" for p in patterns)
+        assert any(p.pattern_type.startswith("MVC") for p in patterns)
     
     def test_detect_all_patterns(self, detector):
         """Test detecting all patterns in one file"""

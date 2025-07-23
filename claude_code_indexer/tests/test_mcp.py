@@ -138,20 +138,25 @@ class TestMCPIntegration:
             assert True
     
     def test_mcp_config_path_logic(self):
-        """Test MCP config path logic"""
+        """Test MCP config path logic for both Claude Desktop and Code"""
         import platform
         from pathlib import Path
         
-        # Test config path logic similar to what MCPInstaller might use
+        # Test config path logic for Claude Desktop
         if platform.system() == 'Darwin':  # macOS
-            expected_path = Path.home() / 'Library' / 'Application Support' / 'Claude'
+            desktop_path = Path.home() / 'Library' / 'Application Support' / 'Claude'
+            code_path = Path.home() / 'Library' / 'Application Support' / 'Claude Code'
         elif platform.system() == 'Windows':
-            expected_path = Path.home() / 'AppData' / 'Roaming' / 'Claude'
+            desktop_path = Path.home() / 'AppData' / 'Roaming' / 'Claude'
+            code_path = Path.home() / 'AppData' / 'Roaming' / 'Claude Code'
         else:  # Linux
-            expected_path = Path.home() / '.config' / 'Claude'
+            desktop_path = Path.home() / '.config' / 'Claude'
+            code_path = Path.home() / '.config' / 'Claude Code'
         
-        assert isinstance(expected_path, Path)
-        assert 'Claude' in str(expected_path)
+        assert isinstance(desktop_path, Path)
+        assert isinstance(code_path, Path)
+        assert 'Claude' in str(desktop_path)
+        assert 'Claude Code' in str(code_path)
     
     def test_mcp_server_mode_detection(self):
         """Test MCP server mode detection logic"""
@@ -200,3 +205,19 @@ def test_mcp_constants_and_defaults():
     assert isinstance(expected_config_filename, str)
     assert len(expected_command) > 0
     assert '.json' in expected_config_filename
+
+
+def test_claude_code_support():
+    """Test Claude Code support in MCPInstaller"""
+    try:
+        from claude_code_indexer.mcp_installer import MCPInstaller
+        installer = MCPInstaller()
+        
+        # Test that installer has methods for both apps
+        assert hasattr(installer, 'check_claude_desktop')
+        assert hasattr(installer, 'check_claude_code')
+        assert hasattr(installer, 'detect_claude_app')
+        assert hasattr(installer, '_get_desktop_config_path')
+        assert hasattr(installer, '_get_code_config_path')
+    except ImportError:
+        pytest.skip("MCPInstaller not available")

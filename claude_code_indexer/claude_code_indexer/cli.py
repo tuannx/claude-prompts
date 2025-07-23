@@ -17,6 +17,8 @@ from .updater import Updater, check_and_notify_update
 from . import __version__, __app_name__
 from .security import validate_file_path, SecurityError
 from .github_reporter import suggest_github_issue
+from .commands.god_mode import god_mode_group
+from .cli_migrate import migrate as migrate_command
 
 
 console = Console()
@@ -122,9 +124,10 @@ def init(force):
 
 ## Core Workflow Rules
 
-1. **First think through the problem**, read the codebase for relevant files, and write a plan.
-2. **Make every task and code change as simple as possible**.
-3. **Prioritize simplicity over complexity**.
+1. **SEARCH FIRST**: Always search before adding/deleting anything. Use grep, find, or code indexer.
+2. **First think through the problem**, read the codebase for relevant files, and write a plan.
+3. **Make every task and code change as simple as possible**.
+4. **Prioritize simplicity over complexity**.
 
 """
             
@@ -774,21 +777,21 @@ def sync():
 
 @cli.group()
 def mcp():
-    """MCP (Model Context Protocol) management commands"""
+    """MCP (Model Context Protocol) management commands for Claude Desktop/Code integration"""
     pass
 
 
 @mcp.command("install")
-@click.option("--force", is_flag=True, help="Force installation even if Claude Desktop not found")
+@click.option("--force", is_flag=True, help="Force installation even if Claude Desktop/Code not found")
 def mcp_install(force):
-    """Install MCP server for Claude Desktop integration"""
+    """Install MCP server for Claude Desktop or Claude Code integration"""
     from .mcp_installer import install_mcp
     install_mcp(force=force)
 
 
 @mcp.command("uninstall")
 def mcp_uninstall():
-    """Remove MCP server from Claude Desktop"""
+    """Remove MCP server from Claude Desktop or Claude Code"""
     from .mcp_installer import uninstall_mcp
     uninstall_mcp()
 
@@ -1237,6 +1240,13 @@ def get_critical_components(path, limit, project):
             traceback=traceback.format_exc()
         )
         sys.exit(1)
+
+
+# Register god-mode command group
+cli.add_command(god_mode_group)
+
+# Register migrate command
+cli.add_command(migrate_command)
 
 
 @cli.command(name='llm-guide')

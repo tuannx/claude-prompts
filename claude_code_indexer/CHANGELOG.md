@@ -2,6 +2,67 @@
 
 All notable changes to Claude Code Indexer will be documented in this file.
 
+## [1.15.0] - 2025-07-23
+
+### 🚀 New Features
+- **Automatic Database Migration System** - Seamless schema updates when upgrading versions
+  - Auto-detects current database schema version (even for legacy databases without version metadata)
+  - Creates automatic backups before migration with rollback on failure
+  - Supports incremental upgrades through multiple schema versions
+  - New `migrate` CLI command with --dry-run, --target-version, and --force options
+  - Migration history tracking in database
+  - Preserves all existing data during schema updates
+
+### 🛠️ Technical Improvements
+- **Migration Infrastructure**:
+  - Base migration class for creating new schema updates
+  - Version detection for databases from v1.0.0 to v1.14.0
+  - Atomic migrations with automatic rollback on errors
+  - Backup management with automatic cleanup of old backups
+  - Comprehensive test suite with 11 test cases
+
+### 📝 Documentation
+- Added migration command documentation in README
+- Updated CHANGELOG with migration details
+- Added examples for common migration scenarios
+
+## [1.14.0] - 2025-07-23
+
+### 🚀 New Features
+- **Claude Code Support** - MCP installer now supports both Claude Desktop and Claude Code
+  - Auto-detects which Claude app is installed
+  - Prioritizes Claude Code if both are installed
+  - Updated all MCP commands to work with both apps
+
+- **Automatic Database Migrations** - Seamless schema updates with version tracking
+  - Auto-detects database schema version for legacy databases
+  - Creates backups before migration with rollback on failure
+  - Supports incremental upgrades through multiple versions
+  - New `migrate` CLI command with --dry-run option
+  - Migration history tracking in database
+
+### 🛠️ Improvements
+- **MCP Installer Updates**:
+  - Added `check_claude_code()` method to detect Claude Code installation
+  - Added `detect_claude_app()` to automatically choose the right app
+  - Updated configuration paths for Claude Code:
+    - macOS: `~/Library/Application Support/Claude Code/claude_desktop_config.json`
+    - Windows: `%APPDATA%\Claude Code\claude_desktop_config.json`
+    - Linux: `~/.config/Claude Code/claude_desktop_config.json`
+  - Dynamic app name display in all MCP commands
+
+- **Database Schema Updates**:
+  - Added migration system for handling schema changes
+  - Schema version tracking in indexing_metadata table
+  - Automatic backup creation before migrations
+  - Support for detecting pre-1.1.0 databases without version metadata
+
+### 📝 Documentation
+- Updated README to mention Claude Code support
+- Added configuration paths for both Claude Desktop and Claude Code
+- Updated MCP command descriptions to include Claude Code
+- Added migration command documentation and examples
+
 ## [1.13.0] - 2025-01-21
 
 ### 🎯 User Experience Improvements

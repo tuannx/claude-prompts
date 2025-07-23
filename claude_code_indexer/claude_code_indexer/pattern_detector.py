@@ -147,6 +147,17 @@ class PatternDetector:
                 observer_methods = []
                 
                 for item in node.body:
+                    # Check in __init__ method for observers list
+                    if isinstance(item, ast.FunctionDef) and item.name == '__init__':
+                        for stmt in item.body:
+                            if isinstance(stmt, ast.Assign):
+                                for target in stmt.targets:
+                                    if isinstance(target, ast.Attribute):
+                                        if hasattr(target, 'attr') and any(keyword in target.attr.lower() 
+                                              for keyword in ['observer', 'listener', 'subscriber']):
+                                            has_observers_list = True
+                    
+                    # Also check class-level assignments
                     if isinstance(item, ast.Assign):
                         # Check for observers/listeners list
                         for target in item.targets:
@@ -158,11 +169,11 @@ class PatternDetector:
                     if isinstance(item, ast.FunctionDef):
                         method_name = item.name.lower()
                         if any(keyword in method_name 
-                              for keyword in ['notify', 'update', 'broadcast']):
+                              for keyword in ['notify', 'update', 'broadcast', 'emit']):
                             has_notify_method = True
                             observer_methods.append(item.name)
                         if any(keyword in method_name 
-                              for keyword in ['subscribe', 'add_observer', 'register']):
+                              for keyword in ['subscribe', 'attach', 'add_observer', 'register']):
                             has_subscribe_method = True
                             observer_methods.append(item.name)
                 
@@ -283,6 +294,16 @@ class PatternDetector:
                 has_wrapped_calls = False
                 
                 for item in node.body:
+                    # Check in __init__ for component attribute
+                    if isinstance(item, ast.FunctionDef) and item.name == '__init__':
+                        for stmt in item.body:
+                            if isinstance(stmt, ast.Assign):
+                                for target in stmt.targets:
+                                    if isinstance(target, ast.Attribute):
+                                        if hasattr(target, 'attr') and any(keyword in target.attr.lower() 
+                                              for keyword in ['component', 'wrapped', 'inner']):
+                                            has_component_attr = True
+                    
                     if isinstance(item, ast.Assign):
                         # Check for component/wrapped object
                         for target in item.targets:
@@ -294,7 +315,12 @@ class PatternDetector:
                     if isinstance(item, ast.FunctionDef):
                         # Check for method delegation
                         for stmt in item.body:
-                            if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+                            if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Call):
+                                if isinstance(stmt.value.func, ast.Attribute):
+                                    if hasattr(stmt.value.func.value, 'attr') and \
+                                       stmt.value.func.value.attr in ['component', 'wrapped']:
+                                        has_wrapped_calls = True
+                            elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
                                 if isinstance(stmt.value.func, ast.Attribute):
                                     has_wrapped_calls = True
                 
@@ -328,6 +354,16 @@ class PatternDetector:
                 has_conversion_methods = False
                 
                 for item in node.body:
+                    # Check in __init__ for adaptee attribute
+                    if isinstance(item, ast.FunctionDef) and item.name == '__init__':
+                        for stmt in item.body:
+                            if isinstance(stmt, ast.Assign):
+                                for target in stmt.targets:
+                                    if isinstance(target, ast.Attribute):
+                                        if hasattr(target, 'attr') and any(keyword in target.attr.lower() 
+                                              for keyword in ['adaptee', 'adapted', 'legacy', 'xml_parser', 'adapter']):
+                                            has_adaptee_attr = True
+                    
                     if isinstance(item, ast.Assign):
                         for target in item.targets:
                             if isinstance(target, ast.Name):
@@ -338,7 +374,7 @@ class PatternDetector:
                     if isinstance(item, ast.FunctionDef):
                         method_name = item.name.lower()
                         if any(keyword in method_name 
-                              for keyword in ['convert', 'adapt', 'translate']):
+                              for keyword in ['convert', 'adapt', 'translate', 'parse']):
                             has_conversion_methods = True
                 
                 confidence = 0.0

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-MCP Installation Helper for Claude Desktop
-Automatically configures Claude Desktop to use claude-code-indexer
+MCP Installation Helper for Claude Desktop and Claude Code
+Automatically configures Claude Desktop/Code to use claude-code-indexer
 """
 
 import json
@@ -20,13 +20,16 @@ console = Console()
 
 
 class MCPInstaller:
-    """Handle MCP installation for Claude Desktop"""
+    """Handle MCP installation for Claude Desktop and Claude Code"""
     
     def __init__(self):
         self.platform = platform.system()
-        self.config_path = self._get_config_path()
+        self.desktop_config_path = self._get_desktop_config_path()
+        self.code_config_path = self._get_code_config_path()
+        # Default to desktop config for backward compatibility
+        self.config_path = self.desktop_config_path
         
-    def _get_config_path(self) -> Optional[Path]:
+    def _get_desktop_config_path(self) -> Optional[Path]:
         """Get Claude Desktop config path based on platform"""
         if self.platform == "Darwin":  # macOS
             return Path.home() / "Library/Application Support/Claude/claude_desktop_config.json"
@@ -37,14 +40,48 @@ class MCPInstaller:
         else:
             return None
     
+    def _get_code_config_path(self) -> Optional[Path]:
+        """Get Claude Code config path based on platform"""
+        if self.platform == "Darwin":  # macOS
+            return Path.home() / "Library/Application Support/Claude Code/claude_desktop_config.json"
+        elif self.platform == "Windows":
+            return Path.home() / "AppData/Roaming/Claude Code/claude_desktop_config.json"
+        elif self.platform == "Linux":
+            return Path.home() / ".config/Claude Code/claude_desktop_config.json"
+        else:
+            return None
+    
     def check_claude_desktop(self) -> bool:
         """Check if Claude Desktop is installed"""
-        if not self.config_path:
+        if not self.desktop_config_path:
             return False
             
         # Check if Claude Desktop directory exists
-        claude_dir = self.config_path.parent
+        claude_dir = self.desktop_config_path.parent
         return claude_dir.exists()
+    
+    def check_claude_code(self) -> bool:
+        """Check if Claude Code is installed"""
+        if not self.code_config_path:
+            return False
+            
+        # Check if Claude Code directory exists
+        claude_code_dir = self.code_config_path.parent
+        return claude_code_dir.exists()
+    
+    def detect_claude_app(self) -> str:
+        """Detect which Claude app is installed"""
+        has_desktop = self.check_claude_desktop()
+        has_code = self.check_claude_code()
+        
+        if has_code:
+            self.config_path = self.code_config_path
+            return "code"
+        elif has_desktop:
+            self.config_path = self.desktop_config_path
+            return "desktop"
+        else:
+            return "none"
     
     def load_config(self) -> Dict[str, Any]:
         """Load existing Claude Desktop config"""
@@ -81,17 +118,20 @@ class MCPInstaller:
     
     def install(self, force: bool = False) -> bool:
         """Install MCP server configuration"""
-        # Check platform support
-        if not self.config_path:
-            console.print(f"[red]❌ Platform '{self.platform}' is not supported[/red]")
-            return False
+        # Detect which Claude app is installed
+        app_type = self.detect_claude_app()
         
-        # Check Claude Desktop
-        if not self.check_claude_desktop():
-            console.print("[yellow]⚠️  Claude Desktop not found at expected location[/yellow]")
-            console.print(f"Expected location: {self.config_path.parent}")
+        if app_type == "none":
+            console.print("[red]❌ Neither Claude Desktop nor Claude Code found[/red]")
+            if self.desktop_config_path:
+                console.print(f"Expected Claude Desktop at: {self.desktop_config_path.parent}")
+            if self.code_config_path:
+                console.print(f"Expected Claude Code at: {self.code_config_path.parent}")
             if not force and not Confirm.ask("Continue anyway?"):
                 return False
+        else:
+            app_name = "Claude Code" if app_type == "code" else "Claude Desktop"
+            console.print(f"[green]✅ Found {app_name}[/green]")
         
         # Load existing config
         config = self.load_config()
@@ -119,14 +159,19 @@ class MCPInstaller:
         
         # Save config
         if self.save_config(config):
-            console.print("[green]✅ MCP server configured successfully![/green]")
+            app_name = "Claude Code" if app_type == "code" else "Claude Desktop"
+            console.print(f"[green]✅ MCP server configured successfully for {app_name}![/green]")
             console.print(f"📁 Config location: {self.config_path}")
+            console.print(f"\n[yellow]⚠️  Please restart {app_name} for changes to take effect[/yellow]")
             return True
         else:
             return False
     
     def uninstall(self) -> bool:
         """Remove MCP server configuration"""
+        # Detect which app is installed to use the right config path
+        app_type = self.detect_claude_app()
+        
         if not self.config_path or not self.config_path.exists():
             console.print("[yellow]No configuration found[/yellow]")
             return True
@@ -155,7 +200,7 @@ class MCPInstaller:
         table.add_column("Details")
         
         # Platform check
-        platform_supported = self.config_path is not None
+        platform_supported = self.desktop_config_path is not None or self.code_config_path is not None
         table.add_row(
             "Platform",
             "✅ Supported" if platform_supported else "❌ Not Supported",
@@ -163,11 +208,19 @@ class MCPInstaller:
         )
         
         # Claude Desktop check
-        claude_installed = self.check_claude_desktop()
+        desktop_installed = self.check_claude_desktop()
         table.add_row(
             "Claude Desktop",
-            "✅ Found" if claude_installed else "❌ Not Found",
-            str(self.config_path.parent) if self.config_path else "N/A"
+            "✅ Found" if desktop_installed else "❌ Not Found",
+            str(self.desktop_config_path.parent) if self.desktop_config_path else "N/A"
+        )
+        
+        # Claude Code check
+        code_installed = self.check_claude_code()
+        table.add_row(
+            "Claude Code",
+            "✅ Found" if code_installed else "❌ Not Found",
+            str(self.code_config_path.parent) if self.code_config_path else "N/A"
         )
         
         # Config check
@@ -195,17 +248,18 @@ class MCPInstaller:
         # Show instructions if not fully configured
         if not platform_supported:
             console.print("\n[yellow]Your platform is not supported for automatic installation.[/yellow]")
-            console.print("Please manually configure Claude Desktop.")
-        elif not claude_installed:
-            console.print("\n[yellow]Claude Desktop not found. Please install it first:[/yellow]")
-            console.print("https://claude.ai/desktop")
+            console.print("Please manually configure Claude Desktop or Claude Code.")
+        elif not desktop_installed and not code_installed:
+            console.print("\n[yellow]Neither Claude Desktop nor Claude Code found. Please install one:[/yellow]")
+            console.print("Claude Desktop: https://claude.ai/desktop")
+            console.print("Claude Code: https://www.anthropic.com/news/claude-code")
         elif not config_exists or not mcp_configured:
             console.print("\n[cyan]To install MCP server:[/cyan]")
             console.print("claude-code-indexer mcp install")
 
 
 def install_mcp(force: bool = False) -> None:
-    """Install MCP server for Claude Desktop"""
+    """Install MCP server for Claude Desktop/Code"""
     installer = MCPInstaller()
     
     console.print("[bold cyan]🤖 Claude Code Indexer MCP Installer[/bold cyan]\n")
@@ -223,7 +277,9 @@ def install_mcp(force: bool = False) -> None:
     if installer.install(force=force):
         console.print("\n[green]🎉 Installation complete![/green]")
         console.print("\nNext steps:")
-        console.print("1. Restart Claude Desktop")
+        app_type = installer.detect_claude_app()
+        app_name = "Claude Code" if app_type == "code" else "Claude Desktop"
+        console.print(f"1. Restart {app_name}")
         console.print("2. Open a Python project")
         console.print("3. Claude will have access to code indexing tools automatically!")
     else:
@@ -231,12 +287,15 @@ def install_mcp(force: bool = False) -> None:
 
 
 def uninstall_mcp() -> None:
-    """Uninstall MCP server from Claude Desktop"""
+    """Uninstall MCP server from Claude Desktop/Code"""
     installer = MCPInstaller()
     
     console.print("[bold cyan]🤖 Claude Code Indexer MCP Uninstaller[/bold cyan]\n")
     
-    if Confirm.ask("Remove claude-code-indexer from Claude Desktop?"):
+    app_type = installer.detect_claude_app()
+    app_name = "Claude Code" if app_type == "code" else "Claude Desktop" if app_type == "desktop" else "Claude"
+    
+    if Confirm.ask(f"Remove claude-code-indexer from {app_name}?"):
         if installer.uninstall():
             console.print("\n[green]Successfully removed![/green]")
         else:

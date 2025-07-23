@@ -19,6 +19,7 @@ gh issue close <number> --comment "Done"
 6. Close issue
 
 ## Principles
+- **SEARCH FIRST**: Always search before adding/deleting
 - Small files
 - One file at a time
 - Minimal changes
