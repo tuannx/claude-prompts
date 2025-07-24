@@ -227,7 +227,7 @@ def query_important_code(project_path: str, limit: int = 20, node_type: Optional
     return result
     
 @mcp.tool()
-def search_code(project_path: str, terms: str, limit: int = 10, mode: str = "any") -> str:
+def search_code(project_path: str, terms: str, limit: int = 10, mode: str = "any", use_fts: bool = True) -> str:
     """Search for code entities by name or pattern. Supports multiple keywords.
     
     Args:
@@ -235,6 +235,7 @@ def search_code(project_path: str, terms: str, limit: int = 10, mode: str = "any
         terms: Search terms separated by spaces (e.g., "auth user login")
         limit: Number of results to return (default: 10)
         mode: Search mode - 'any' (OR logic) or 'all' (AND logic) (default: 'any')
+        use_fts: Use FTS5 full-text search if available (default: True)
     
     Returns:
         Search results with matching code entities
@@ -259,36 +260,68 @@ def search_code(project_path: str, terms: str, limit: int = 10, mode: str = "any
     if not keywords:
         return "❌ No search terms provided"
     
+    # Check cache first
+    cache_key = f"search:{project_path}:{terms}:{mode}:{limit}:{use_fts}"
+    if hasattr(indexer, 'cache_manager'):
+        cached_result = indexer.cache_manager.get_from_memory_cache(cache_key)
+        if cached_result:
+            return cached_result + "\n(from cache)"
+    
     # Search in database
     import sqlite3
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # Build query based on mode
-    if mode == 'any':
-        # OR logic - match any keyword
-        conditions = []
-        params = []
-        for keyword in keywords:
-            conditions.append("(name LIKE ? OR path LIKE ? OR summary LIKE ?)")
-            params.extend([f"%{keyword}%", f"%{keyword}%", f"%{keyword}%"])
-        where_clause = " OR ".join(conditions)
-    else:
-        # AND logic - must match all keywords
-        conditions = []
-        params = []
-        for keyword in keywords:
-            conditions.append("(name LIKE ? OR path LIKE ? OR summary LIKE ?)")
-            params.extend([f"%{keyword}%", f"%{keyword}%", f"%{keyword}%"])
-        where_clause = " AND ".join(conditions)
+    # Check if FTS5 table exists
+    has_fts = False
+    if use_fts:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='code_nodes_fts'")
+        has_fts = cursor.fetchone() is not None
     
-    query = f"""
-        SELECT * FROM code_nodes 
-        WHERE {where_clause}
-        ORDER BY importance_score DESC
-        LIMIT ?
-    """
-    params.append(limit)
+    # Build query based on FTS5 availability and mode
+    if has_fts and use_fts:
+        # Use FTS5 for faster search
+        if mode == 'any':
+            # OR logic - match any keyword
+            fts_query = " OR ".join(keywords)
+        else:
+            # AND logic - must match all keywords
+            fts_query = " AND ".join(keywords)
+        
+        query = """
+            SELECT cn.* FROM code_nodes cn
+            JOIN code_nodes_fts fts ON cn.id = fts.rowid
+            WHERE code_nodes_fts MATCH ?
+            ORDER BY cn.importance_score DESC
+            LIMIT ?
+        """
+        params = [fts_query, limit]
+    else:
+        # Fallback to LIKE queries
+        if mode == 'any':
+            # OR logic - match any keyword
+            conditions = []
+            params = []
+            for keyword in keywords:
+                conditions.append("(name LIKE ? OR path LIKE ? OR summary LIKE ?)")
+                params.extend([f"%{keyword}%", f"%{keyword}%", f"%{keyword}%"])
+            where_clause = " OR ".join(conditions)
+        else:
+            # AND logic - must match all keywords
+            conditions = []
+            params = []
+            for keyword in keywords:
+                conditions.append("(name LIKE ? OR path LIKE ? OR summary LIKE ?)")
+                params.extend([f"%{keyword}%", f"%{keyword}%", f"%{keyword}%"])
+            where_clause = " AND ".join(conditions)
+        
+        query = f"""
+            SELECT * FROM code_nodes 
+            WHERE {where_clause}
+            ORDER BY importance_score DESC
+            LIMIT ?
+        """
+        params.append(limit)
     
     cursor.execute(query, params)
     
@@ -306,11 +339,19 @@ def search_code(project_path: str, terms: str, limit: int = 10, mode: str = "any
         return f"No results found for '{terms}' (mode: {mode})"
     
     # Format results
-    output = f"🔍 Search results for '{terms}' (mode: {mode}):\n\n"
+    output = f"🔍 Search results for '{terms}' (mode: {mode})"
+    if has_fts and use_fts:
+        output += " [FTS5]"
+    output += ":\n\n"
+    
     for i, node in enumerate(results, 1):
         output += f"{i}. **{node['name']}** ({node['node_type']})\n"
         output += f"   📊 Score: {node['importance_score']:.3f}\n"
         output += f"   📁 Path: {node['path']}\n\n"
+    
+    # Cache the result
+    if hasattr(indexer, 'cache_manager'):
+        indexer.cache_manager.add_to_memory_cache(cache_key, output)
     
     return output
     

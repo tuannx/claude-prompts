@@ -2,6 +2,33 @@
 
 All notable changes to Claude Code Indexer will be documented in this file.
 
+## [1.20.0] - 2025-07-24
+
+### 🚀 Search Performance Optimizations
+- **Added search optimization indexes** - Created indexes on `name`, `importance_score`, and composite search columns
+- **Implemented FTS5 full-text search** - 10-100x faster text search with SQLite FTS5
+  - Automatic fallback to LIKE queries if FTS5 not available
+  - Triggers keep FTS5 in sync with main table
+  - Porter tokenizer for better search results
+- **Search result caching** - Results cached in memory for instant repeated searches
+  - Cache key includes search terms, mode, limit, and FTS5 flag
+  - Cache invalidation on index updates
+
+### 🔧 Technical Details
+- **Migration v1.16.0** - Adds indexes and FTS5 support
+- **Backward compatible** - Works with existing databases
+- **Search improvements**:
+  - `idx_code_nodes_name` - Speed up name searches
+  - `idx_code_nodes_importance_score` - Optimize ORDER BY
+  - `idx_code_nodes_search` - Composite index for search queries
+  - FTS5 virtual table with porter unicode tokenizer
+- **New parameter**: `use_fts` in search_code (default: True)
+
+### 🧪 Testing
+- Added comprehensive test suite for search optimizations
+- 9 new tests covering FTS5, caching, and performance
+- Total: 65 MCP tests, 12 migration tests
+
 ## [1.19.0] - 2025-07-24
 
 ### 🎯 100% MCP Parameter Coverage Achieved

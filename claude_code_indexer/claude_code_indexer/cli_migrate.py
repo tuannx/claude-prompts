@@ -56,7 +56,9 @@ def migrate(project_path, target_version, dry_run, force):
         major = int(parts[0])
         minor = int(parts[1]) if len(parts) > 1 else 0
         
-        if major >= 1 and minor >= 15:
+        if major >= 1 and minor >= 16:
+            target_version = '1.16.0'
+        elif major >= 1 and minor >= 15:
             target_version = '1.15.0'
         elif major >= 1 and minor >= 14:
             target_version = '1.14.0'

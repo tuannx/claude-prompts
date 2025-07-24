@@ -388,6 +388,81 @@ class TestMCPSearchCode:
                     result = search_code("/test/project", "test")
         
         assert "❌ No indexed data found for project" in result
+    
+    def test_search_code_with_fts5(self):
+        """Test search using FTS5"""
+        with patch('claude_code_indexer.mcp_server.project_manager') as pm:
+            pm.storage.get_project_dir.return_value = Path("/test/project/.claude-code-indexer")
+            indexer = Mock()
+            indexer.cache_manager.get_from_memory_cache.return_value = None
+            pm.get_indexer.return_value = indexer
+            
+            with patch('os.path.exists', return_value=True):
+                with patch('os.path.abspath', return_value="/test/project"):
+                    with patch('sqlite3.connect') as mock_connect:
+                        mock_conn = Mock()
+                        mock_cursor = Mock()
+                        mock_connect.return_value = mock_conn
+                        mock_conn.cursor.return_value = mock_cursor
+                        
+                        # Simulate FTS5 table exists
+                        mock_cursor.fetchone.side_effect = [
+                            ('code_nodes_fts',),  # FTS5 table exists
+                        ]
+                        mock_cursor.fetchall.return_value = [
+                            (1, 'function', 'auth_user', '/auth.py', 'User auth', 0.9, None, None, 'python', 10, 0)
+                        ]
+                        mock_cursor.description = [
+                            ('id',), ('node_type',), ('name',), ('path',), ('summary',),
+                            ('importance_score',), ('relevance_tags',), ('created_at',),
+                            ('language',), ('line_number',), ('column_number',)
+                        ]
+                        
+                        result = search_code("/test/project", "auth", use_fts=True)
+        
+        assert "[FTS5]" in result
+        assert "auth_user" in result
+    
+    def test_search_code_with_caching(self):
+        """Test search result caching"""
+        with patch('claude_code_indexer.mcp_server.project_manager') as pm:
+            pm.storage.get_project_dir.return_value = Path("/test/project/.claude-code-indexer")
+            indexer = Mock()
+            cache_manager = Mock()
+            
+            # First call - no cache
+            cache_manager.get_from_memory_cache.return_value = None
+            indexer.cache_manager = cache_manager
+            pm.get_indexer.return_value = indexer
+            
+            with patch('os.path.exists', return_value=True):
+                with patch('os.path.abspath', return_value="/test/project"):
+                    with patch('sqlite3.connect') as mock_connect:
+                        mock_conn = Mock()
+                        mock_cursor = Mock()
+                        mock_connect.return_value = mock_conn
+                        mock_conn.cursor.return_value = mock_cursor
+                        
+                        mock_cursor.fetchone.return_value = None  # No FTS5
+                        mock_cursor.fetchall.return_value = [
+                            (1, 'function', 'test_func', '/test.py', 'Test', 0.8, None, None, 'python', 1, 0)
+                        ]
+                        mock_cursor.description = [
+                            ('id',), ('node_type',), ('name',), ('path',), ('summary',),
+                            ('importance_score',), ('relevance_tags',), ('created_at',),
+                            ('language',), ('line_number',), ('column_number',)
+                        ]
+                        
+                        result1 = search_code("/test/project", "test")
+            
+            # Verify cache was written
+            cache_manager.add_to_memory_cache.assert_called_once()
+            
+            # Second call - from cache
+            cache_manager.get_from_memory_cache.return_value = "Cached result"
+            result2 = search_code("/test/project", "test")
+            
+            assert "(from cache)" in result2
 
 
 class TestMCPListIndexedProjects:

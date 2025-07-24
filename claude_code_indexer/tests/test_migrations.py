@@ -13,6 +13,7 @@ from claude_code_indexer.migrations.versions.migration_002_v1_1_0 import Migrati
 from claude_code_indexer.migrations.versions.migration_003_v1_6_0 import MigrationV1_6_0
 from claude_code_indexer.migrations.versions.migration_004_v1_14_0 import MigrationV1_14_0
 from claude_code_indexer.migrations.versions.migration_005_v1_15_0 import MigrationV1_15_0
+from claude_code_indexer.migrations.versions.migration_006_v1_16_0 import MigrationV1_16_0
 
 
 class TestMigrationManager:
@@ -380,5 +381,50 @@ class TestMigrationManager:
         assert 'description' not in columns
         assert 'layer' not in columns
         assert 'role' not in columns
+        
+        conn.close()
+    
+    def test_migrate_to_v1_16_0(self, migration_manager, temp_db):
+        """Test migration to v1.16.0 with search optimizations."""
+        # Create v1.15.0 database
+        self.create_legacy_v1_0_0_db(temp_db)
+        
+        # Migrate to v1.15.0 first
+        success, message = migration_manager.migrate('1.15.0')
+        assert success
+        
+        # Add some test data
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO code_nodes (node_type, name, path, summary, importance_score) 
+            VALUES (?, ?, ?, ?, ?)
+        """, ('function', 'test_function', '/test.py', 'Test summary', 0.8))
+        conn.commit()
+        
+        # Migrate to v1.16.0
+        success, message = migration_manager.migrate('1.16.0')
+        assert success
+        assert 'Successfully migrated' in message
+        
+        # Verify indexes exist
+        cursor.execute("PRAGMA index_list(code_nodes)")
+        indexes = {row[1] for row in cursor.fetchall()}
+        assert 'idx_code_nodes_name' in indexes
+        assert 'idx_code_nodes_importance_score' in indexes
+        assert 'idx_code_nodes_search' in indexes
+        
+        # Verify FTS5 table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='code_nodes_fts'")
+        assert cursor.fetchone() is not None
+        
+        # Verify FTS5 data was populated
+        cursor.execute("SELECT COUNT(*) FROM code_nodes_fts")
+        assert cursor.fetchone()[0] > 0
+        
+        # Test FTS5 search
+        cursor.execute("SELECT * FROM code_nodes_fts WHERE code_nodes_fts MATCH 'test'")
+        results = cursor.fetchall()
+        assert len(results) > 0
         
         conn.close()
