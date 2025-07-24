@@ -139,6 +139,18 @@ def get_project_stats(project_path: str) -> str:
     stats = indexer.get_stats()
     cache_stats = cache_manager.get_cache_stats()
     
+    # Handle different cache stats structures
+    if isinstance(cache_stats, dict) and 'disk' in cache_stats:
+        # New hybrid cache structure
+        total_entries = cache_stats['disk']['total_entries']
+        recent_entries = cache_stats['disk']['recent_entries']
+        cache_db_size = cache_stats['disk']['cache_db_size']
+    else:
+        # Old flat structure
+        total_entries = cache_stats.get('total_entries', 0)
+        recent_entries = cache_stats.get('recent_entries', 0)
+        cache_db_size = cache_stats.get('cache_db_size', 0)
+    
     return f"""📊 Code Indexing Statistics
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 📂 Project: {project_path}
@@ -154,9 +166,9 @@ def get_project_stats(project_path: str) -> str:
 {_format_relationships(stats.get('relationship_types', {}))}
 
 💾 Cache Statistics:
-• Total entries: {cache_stats['total_entries']}
-• Recent (24h): {cache_stats['recent_entries']}
-• Cache size: {cache_stats['cache_db_size'] / 1024:.1f} KB"""
+• Total entries: {total_entries}
+• Recent (24h): {recent_entries}
+• Cache size: {cache_db_size / 1024:.1f} KB"""
     
 @mcp.tool()
 def query_important_code(project_path: str, limit: int = 20, node_type: Optional[str] = None) -> str:
@@ -303,8 +315,12 @@ def search_code(project_path: str, terms: str, limit: int = 10, mode: str = "any
     return output
     
 @mcp.tool()
-def list_indexed_projects() -> str:
-    """List all indexed projects.
+def list_indexed_projects(limit: int = 20, include_stats: bool = True) -> str:
+    """List all indexed projects with optional limiting and stats.
+    
+    Args:
+        limit: Maximum number of projects to return (default: 20)
+        include_stats: Whether to include detailed stats (default: True) 
     
     Returns:
         List of indexed projects with their stats
@@ -315,32 +331,41 @@ def list_indexed_projects() -> str:
     if not projects:
         return "📂 No indexed projects found."
     
-    output = "📚 **Indexed Projects**\n\n"
+    # Limit number of projects to prevent response size issues
+    limited_projects = projects[:limit]
+    total_projects = len(projects)
     
-    for project in projects:
+    output = f"📚 **Indexed Projects** ({len(limited_projects)}"
+    if total_projects > limit:
+        output += f" of {total_projects}, use limit parameter for more"
+    output += ")\n\n"
+    
+    for project in limited_projects:
         output += f"📁 **{project['name']}**\n"
         output += f"   Path: {project['path']}\n"
         output += f"   Status: {'✓ Exists' if project.get('exists', True) else '✗ Missing'}\n"
         
-        if project.get('last_indexed'):
-            output += f"   Last indexed: {project['last_indexed']}\n"
-        
-        if project.get('stats'):
-            stats = project['stats']
-            output += f"   Nodes: {stats.get('nodes', 0)}\n"
-            output += f"   Files: {stats.get('files', 0)}\n"
-        
-        if project.get('db_size', 0) > 0:
-            size_mb = project['db_size'] / 1024 / 1024
-            output += f"   Size: {size_mb:.1f} MB\n"
+        if include_stats:
+            if project.get('last_indexed'):
+                output += f"   Last indexed: {project['last_indexed']}\n"
+            
+            if project.get('stats'):
+                stats = project['stats']
+                output += f"   Nodes: {stats.get('nodes', 0)}\n"
+                output += f"   Files: {stats.get('files', 0)}\n"
+            
+            if project.get('db_size', 0) > 0:
+                size_mb = project['db_size'] / 1024 / 1024
+                output += f"   Size: {size_mb:.1f} MB\n"
         
         output += "\n"
     
-    # Add storage stats
-    stats = storage.get_storage_stats()
-    output += f"💾 **Storage**: {stats['app_home']}\n"
-    output += f"   Total projects: {stats['project_count']}\n"
-    output += f"   Total size: {stats['total_size_mb']:.1f} MB\n"
+    # Add storage stats (summary only to keep response manageable)
+    if include_stats:
+        storage_stats = storage.get_storage_stats()
+        output += f"💾 **Storage Summary**:\n"
+        output += f"   Total projects: {storage_stats['project_count']}\n"
+        output += f"   Total size: {storage_stats['total_size_mb']:.1f} MB\n"
     
     return output
     
@@ -650,7 +675,15 @@ def get_codebase_insights(project_path: str) -> str:
     
     try:
         indexer = project_manager.get_indexer(project_path)
-        insights = indexer.get_analysis_insights()
+        
+        # Check if enhanced metadata is available
+        try:
+            insights = indexer.get_analysis_insights()
+        except Exception as e:
+            if "architectural_layer" in str(e):
+                return f"❌ Enhanced metadata not available for project: {project_path}\nRun 'enhance_metadata' first to enable insights analysis."
+            else:
+                raise e
         
         output = f"📊 Codebase Insights for: {project_path}\n\n"
         
@@ -782,7 +815,6 @@ def update_node_metadata(project_path: str, node_id: int, updates: Dict[str, Any
         
         # Convert string JSON to dict if needed
         if isinstance(updates, str):
-            import json
             updates = json.loads(updates)
         
         success = indexer.update_node_metadata(node_id, updates)

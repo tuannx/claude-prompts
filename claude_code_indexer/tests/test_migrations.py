@@ -12,6 +12,7 @@ from claude_code_indexer.migrations.versions.migration_001_v1_0_0 import Migrati
 from claude_code_indexer.migrations.versions.migration_002_v1_1_0 import MigrationV1_1_0
 from claude_code_indexer.migrations.versions.migration_003_v1_6_0 import MigrationV1_6_0
 from claude_code_indexer.migrations.versions.migration_004_v1_14_0 import MigrationV1_14_0
+from claude_code_indexer.migrations.versions.migration_005_v1_15_0 import MigrationV1_15_0
 
 
 class TestMigrationManager:
@@ -164,6 +165,7 @@ class TestMigrationManager:
         assert '1.1.0' in versions
         assert '1.6.0' in versions
         assert '1.14.0' in versions
+        assert '1.15.0' in versions
         
         # Check they're sorted
         assert versions == sorted(versions, key=lambda v: tuple(map(int, v.split('.'))))
@@ -355,3 +357,28 @@ class TestMigrationManager:
         success, message = migration_manager.migrate('1.14.0')
         assert success
         assert migration_manager.detect_schema_version() == '1.14.0'
+        
+        # And finally to v1.15.0
+        success, message = migration_manager.migrate('1.15.0')
+        assert success
+        assert migration_manager.detect_schema_version() == '1.15.0'
+        
+        # Verify enhanced_metadata has correct schema
+        conn = sqlite3.connect(temp_db)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(enhanced_metadata)")
+        columns = {row[1] for row in cursor.fetchall()}
+        
+        # Check for new schema columns
+        assert 'llm_summary' in columns
+        assert 'role_tags' in columns
+        assert 'complexity_score' in columns
+        assert 'architectural_layer' in columns
+        assert 'business_domain' in columns
+        
+        # Check old schema columns are gone
+        assert 'description' not in columns
+        assert 'layer' not in columns
+        assert 'role' not in columns
+        
+        conn.close()

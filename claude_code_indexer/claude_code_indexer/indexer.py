@@ -1166,8 +1166,10 @@ class CodeGraphIndexer:
             patch = int(parts[2]) if len(parts) > 2 else 0
             
             # Determine schema version based on features
-            if major >= 1 and minor >= 14:
-                return '1.14.0'  # LLM enhancement tables (no schema change in 1.15.0)
+            if major >= 1 and minor >= 15:
+                return '1.15.0'  # Fixed enhanced_metadata schema
+            elif major >= 1 and minor >= 14:
+                return '1.14.0'  # LLM enhancement tables
             elif major >= 1 and minor >= 6:
                 return '1.6.0'   # Language support
             elif major >= 1 and minor >= 1:
@@ -1176,4 +1178,4 @@ class CodeGraphIndexer:
                 return '1.0.0'   # Basic schema
         except Exception:
             # Default to latest schema version
-            return '1.14.0'
+            return '1.15.0'
