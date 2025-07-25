@@ -27,6 +27,10 @@ class MigrationV1_15_0(BaseMigration):
         table_exists = cursor.fetchone() is not None
         
         if table_exists:
+            # Check which columns exist in the current table
+            cursor.execute("PRAGMA table_info(enhanced_metadata)")
+            columns = {row[1] for row in cursor.fetchall()}
+            
             # Create temporary table with new schema
             self.execute_sql(conn, """
                 CREATE TABLE enhanced_metadata_new (
@@ -46,25 +50,35 @@ class MigrationV1_15_0(BaseMigration):
                 )
             """)
             
-            # Migrate existing data with column mapping
-            self.execute_sql(conn, """
-                INSERT INTO enhanced_metadata_new (
-                    node_id, 
-                    llm_summary,
-                    role_tags,
-                    architectural_layer,
-                    business_domain,
-                    last_analyzed
-                )
-                SELECT 
-                    node_id,
-                    COALESCE(description, ''),
-                    COALESCE(tags, '[]'),
-                    COALESCE(layer, 'unknown'),
-                    COALESCE(role, 'general'),
-                    created_at
-                FROM enhanced_metadata
-            """)
+            # Build migration query based on existing columns
+            if 'description' in columns:
+                # v1.14.0 schema with description column
+                self.execute_sql(conn, """
+                    INSERT INTO enhanced_metadata_new (
+                        node_id, 
+                        llm_summary,
+                        role_tags,
+                        architectural_layer,
+                        business_domain,
+                        last_analyzed
+                    )
+                    SELECT 
+                        node_id,
+                        COALESCE(description, ''),
+                        COALESCE(tags, '[]'),
+                        COALESCE(layer, 'unknown'),
+                        COALESCE(role, 'general'),
+                        created_at
+                    FROM enhanced_metadata
+                """)
+            else:
+                # Handle case where table exists but without expected columns
+                # This might happen if database is in an inconsistent state
+                self.execute_sql(conn, """
+                    INSERT INTO enhanced_metadata_new (node_id)
+                    SELECT DISTINCT node_id FROM enhanced_metadata
+                """)
+            
             
             # Drop old table and rename new one
             self.execute_sql(conn, "DROP TABLE enhanced_metadata")
