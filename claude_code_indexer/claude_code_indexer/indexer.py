@@ -539,7 +539,8 @@ class CodeGraphIndexer:
             # Insert nodes with error handling
             for node_id, node_info in self.nodes.items():
                 # Validate and provide defaults for required fields
-                node_name = node_info.get('name', '').strip()
+                name_value = node_info.get('name', '')
+                node_name = name_value.strip() if name_value else ''
                 if not node_name:
                     # Generate a default name based on node type and ID
                     node_name = f"{node_info.get('node_type', 'unknown')}_{node_id}"
@@ -851,6 +852,53 @@ class CodeGraphIndexer:
         
         conn.close()
         return stats
+    
+    def get_node_info(self, node_id: int) -> Optional[Dict[str, Any]]:
+        """Get detailed information about a specific node.
+        
+        Args:
+            node_id: The node ID to retrieve
+            
+        Returns:
+            Node information dictionary or None if not found
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                SELECT id, name, node_type, path as file_path, summary as content, 
+                       line_number as start_line, importance_score, 
+                       created_at
+                FROM code_nodes 
+                WHERE id = ?
+            """, (node_id,))
+            
+            row = cursor.fetchone()
+            if not row:
+                return None
+            
+            # Convert to dict
+            node_info = dict(row)
+            
+            # Get enhanced metadata if available
+            cursor.execute("""
+                SELECT llm_summary, role_tags, architectural_layer, 
+                       business_domain, complexity_score, criticality_level,
+                       dependencies_impact, testability_score
+                FROM enhanced_metadata 
+                WHERE node_id = ?
+            """, (node_id,))
+            
+            enhanced = cursor.fetchone()
+            if enhanced:
+                node_info.update(dict(enhanced))
+            
+            return node_info
+            
+        finally:
+            conn.close()
     
     def _store_patterns(self, patterns: List, file_path: str):
         """Store detected patterns in database"""
