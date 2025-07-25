@@ -92,12 +92,18 @@ class BaseParser(ABC):
         node_id = self.node_counter
         self.node_counter += 1
         
+        # Validate name - ensure it's not None or empty
+        if not name or name == 'None' or (isinstance(name, str) and not name.strip()):
+            # Generate a meaningful default name
+            file_name = Path(path).name if path else 'unknown'
+            name = f"{node_type}_{node_id}_in_{file_name}"
+        
         return CodeNode(
             id=node_id,
             node_type=node_type,
             name=name,
             path=path,
-            summary=summary,
+            summary=summary if summary else f"{node_type}: {name}",
             line_number=line_number,
             column_number=column_number,
             language=self.language,

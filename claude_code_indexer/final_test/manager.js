@@ -1,0 +1,1 @@
+class TestManager { constructor() {} }

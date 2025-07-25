@@ -538,6 +538,13 @@ class CodeGraphIndexer:
             
             # Insert nodes with error handling
             for node_id, node_info in self.nodes.items():
+                # Validate and provide defaults for required fields
+                node_name = node_info.get('name', '').strip()
+                if not node_name:
+                    # Generate a default name based on node type and ID
+                    node_name = f"{node_info.get('node_type', 'unknown')}_{node_id}"
+                    log_warning(f"Node {node_id} has no name, using default: {node_name}")
+                
                 try:
                     cursor.execute('''
                     INSERT INTO code_nodes (id, node_type, name, path, summary, importance_score, relevance_tags, weight, frequency_score, usage_stats, language, line_number, column_number)
@@ -545,9 +552,9 @@ class CodeGraphIndexer:
                     ''', (
                         node_info['id'],
                         node_info['node_type'],
-                        node_info['name'],
+                        node_name,  # Use validated name
                         node_info['path'],
-                        node_info['summary'],
+                        node_info.get('summary', ''),  # Ensure summary is not None
                         node_info['importance_score'],
                         json.dumps(node_info['relevance_tags']),
                         node_info.get('weight', 0.0),
@@ -567,9 +574,9 @@ class CodeGraphIndexer:
                         ''', (
                             node_info['id'],
                             node_info['node_type'],
-                            node_info['name'],
+                            node_name,  # Use validated name
                             node_info['path'],
-                            node_info['summary'],
+                            node_info.get('summary', ''),  # Ensure summary is not None
                             node_info['importance_score'],
                             json.dumps(node_info['relevance_tags'])
                         ))

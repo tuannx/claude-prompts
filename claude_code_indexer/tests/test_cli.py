@@ -184,7 +184,9 @@ class TestCLI:
                 # Mock the indexer instance
                 mock_instance = Mock()
                 mock_indexer.return_value = mock_instance
-                mock_instance.db_path = Path('test.db')
+                # Use unique db path for this test
+                db_path = Path(temp_dir) / 'test_query.db'
+                mock_instance.db_path = db_path
                 
                 # Mock query_important_nodes method  
                 mock_instance.query_important_nodes.return_value = [
@@ -198,7 +200,7 @@ class TestCLI:
                 ]
                 
                 # Create empty db file so existence check passes
-                Path('test.db').touch()
+                db_path.touch()
                 
                 result = runner.invoke(cli, ['query'])
                 
@@ -214,7 +216,9 @@ class TestCLI:
                 # Mock the indexer instance
                 mock_instance = Mock()
                 mock_indexer.return_value = mock_instance
-                mock_instance.db_path = Path('test.db')
+                # Use unique db path for this test
+                db_path = Path(temp_dir) / 'test_query_important.db'
+                mock_instance.db_path = db_path
                 
                 # Mock query_important_nodes method
                 mock_instance.query_important_nodes.return_value = [
@@ -229,7 +233,7 @@ class TestCLI:
                 ]
                 
                 # Create empty db file so existence check passes
-                Path('test.db').touch()
+                db_path.touch()
                 
                 result = runner.invoke(cli, ['query', '--important'])
                 
@@ -245,11 +249,13 @@ class TestCLI:
                 # Mock the indexer instance
                 mock_instance = Mock()
                 mock_indexer.return_value = mock_instance
-                mock_instance.db_path = Path('test.db')
+                # Use unique db path for this test
+                db_path = Path(temp_dir) / 'test_search.db'
+                mock_instance.db_path = db_path
                 
                 # Create actual database for search functionality
                 import sqlite3
-                conn = sqlite3.connect('test.db')
+                conn = sqlite3.connect(str(db_path))
                 cursor = conn.cursor()
                 cursor.execute('''CREATE TABLE code_nodes (
                     id INTEGER PRIMARY KEY,
@@ -278,7 +284,9 @@ class TestCLI:
                 # Mock the indexer instance
                 mock_instance = Mock()
                 mock_indexer.return_value = mock_instance
-                mock_instance.db_path = Path('test.db')
+                # Use unique db path for this test
+                db_path = Path(temp_dir) / 'test_stats.db'
+                mock_instance.db_path = db_path
                 
                 # Mock get_stats to return proper dict with string values
                 mock_instance.get_stats.return_value = {
@@ -291,7 +299,7 @@ class TestCLI:
                 
                 # Create actual database for stats functionality
                 import sqlite3
-                conn = sqlite3.connect('test.db')
+                conn = sqlite3.connect(str(db_path))
                 cursor = conn.cursor()
                 cursor.execute('''CREATE TABLE code_nodes (
                     id INTEGER PRIMARY KEY,
@@ -459,7 +467,8 @@ class TestCLI:
         
         assert result.exit_code == 0
         assert 'LLM Usage Guide' in result.output or 'QUICK START' in result.output
-        assert 'claude-code-indexer' in result.output
+        # Check for either 'claude-code-indexer' or 'cci' since the tool uses both names
+        assert 'claude-code-indexer' in result.output or 'cci' in result.output
     
     def test_benchmark_command(self, runner, temp_dir):
         """Test benchmark command"""

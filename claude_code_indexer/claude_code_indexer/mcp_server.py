@@ -37,6 +37,25 @@ logger = logging.getLogger(__name__)
 # Create the MCP server
 mcp = FastMCP("claude-code-indexer")
 
+# Dictionary to store tool functions for fallback mode
+TOOLS = {}
+
+# Wrapper for mcp.tool that also registers for fallback
+original_tool = mcp.tool
+
+def tool(*args, **kwargs):
+    """Enhanced tool decorator that registers for fallback mode"""
+    def decorator(func):
+        # Register with MCP
+        mcp_decorated = original_tool(*args, **kwargs)(func)
+        # Register for fallback
+        TOOLS[func.__name__] = func
+        return mcp_decorated
+    return decorator
+
+# Replace mcp.tool with our enhanced version
+mcp.tool = tool
+
 # Project management for MCP server using centralized storage
 class ProjectManager:
     """Manages project-specific databases and caches using centralized storage"""
@@ -262,9 +281,9 @@ def search_code(project_path: str, terms: str, limit: int = 10, mode: str = "any
     
     # Check cache first
     cache_key = f"search:{project_path}:{terms}:{mode}:{limit}:{use_fts}"
-    if hasattr(indexer, 'cache_manager'):
-        cached_result = indexer.cache_manager.get_from_memory_cache(cache_key)
-        if cached_result:
+    if hasattr(indexer, 'cache_manager') and indexer.cache_manager.memory_cache:
+        cached_result = indexer.cache_manager.memory_cache.get(cache_key)
+        if cached_result and isinstance(cached_result, str):
             return cached_result + "\n(from cache)"
     
     # Search in database
@@ -350,8 +369,8 @@ def search_code(project_path: str, terms: str, limit: int = 10, mode: str = "any
         output += f"   📁 Path: {node['path']}\n\n"
     
     # Cache the result
-    if hasattr(indexer, 'cache_manager'):
-        indexer.cache_manager.add_to_memory_cache(cache_key, output)
+    if hasattr(indexer, 'cache_manager') and indexer.cache_manager.memory_cache:
+        indexer.cache_manager.memory_cache.put(cache_key, output, entity_type="search")
     
     return output
     
@@ -810,7 +829,7 @@ def get_critical_components(project_path: str, limit: int = 15) -> str:
         if not critical_components:
             return "ℹ️ No critical components found. Run 'enhance_metadata' first."
         
-        output = f"⚠️ Critical Components (Top {len(critical_components)})\n\n"
+        output = f"🎯 Top {len(critical_components)} Critical Components\n\n"
         
         for i, comp in enumerate(critical_components, 1):
             output += f"{i}. **{comp['name']}** ({comp['node_type']})\n"

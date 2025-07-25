@@ -10,7 +10,11 @@ import json
 from pathlib import Path
 from typing import Optional, Dict, Any
 import platform
-import pkg_resources
+try:
+    from importlib.metadata import version as get_version
+except ImportError:
+    # Python < 3.8 fallback
+    from importlib_metadata import version as get_version
 
 from .logger import log_info, log_error, log_warning
 
@@ -41,7 +45,7 @@ class GitHubIssueReporter:
     def get_system_info(self) -> Dict[str, str]:
         """Gather system information for bug reports"""
         try:
-            version = pkg_resources.get_distribution("claude-code-indexer").version
+            version = get_version("claude-code-indexer")
         except:
             version = "unknown"
             

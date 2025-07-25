@@ -80,7 +80,8 @@ class CrashHandler:
         console.print(f"\n[bold red]Error Type:[/bold red] {crash_data['error_type']}")
         console.print(f"[bold red]Error Message:[/bold red] {crash_data['error_message']}")
         console.print(f"\n[dim]A crash dump has been saved to:[/dim]")
-        console.print(f"[dim]{self.crash_dir / f'{crash_data["crash_id"]}.json'}[/dim]")
+        crash_file_path = self.crash_dir / f'{crash_data["crash_id"]}.json'
+        console.print(f"[dim]{crash_file_path}[/dim]")
         
         # Show options
         console.print("\n[bold cyan]What would you like to do?[/bold cyan]")

@@ -54,7 +54,7 @@ jobs:
     
     - name: Run tests with coverage
       run: |
-        python -m pytest tests/ -v --cov=claude_code_indexer --cov-report=xml --cov-report=term
+        python -m pytest tests/ -v --cov=claude_code_indexer --cov-report=xml --cov-report=term -n auto
     
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'

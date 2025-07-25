@@ -35,7 +35,9 @@ def show_app_header():
 @click.group()
 @click.version_option(version=__version__, prog_name=__app_name__)
 def cli():
-    """Claude Code Indexer - Index source code as graph database
+    """Claude Code Indexer (cci) - Index source code as graph database
+    
+    💡 Pro tip: Use 'cci' instead of 'claude-code-indexer' for all commands!
     
     🚀 Powerful code analysis tool for LLM-assisted development
     🐛 Report issues: https://github.com/tuannx/claude-prompts/issues
@@ -170,9 +172,9 @@ def init(force):
     
     console.print("\n🎉 [bold green]Initialization complete![/bold green]")
     console.print("Next steps:")
-    console.print("1. Run [bold]claude-code-indexer index .[/bold] to index current directory")
-    console.print("2. Run [bold]claude-code-indexer query --important[/bold] to see key components")
-    console.print("3. Run [bold]claude-code-indexer stats[/bold] to view indexing statistics")
+    console.print("1. Run [bold]cci index .[/bold] to index current directory")
+    console.print("2. Run [bold]cci query --important[/bold] to see key components")
+    console.print("3. Run [bold]cci stats[/bold] to view indexing statistics")
 
 
 @cli.command()
@@ -302,9 +304,9 @@ def query(important, type, limit, db, project):
     🎯 Perfect for LLMs to understand codebase structure!
     
     Examples:
-    - claude-code-indexer query --important     # Key components
-    - claude-code-indexer query --type class    # All classes
-    - claude-code-indexer query --limit 50      # Top 50 nodes
+    - cci query --important     # Key components
+    - cci query --type class    # All classes
+    - cci query --limit 50      # Top 50 nodes
     
     🐛 Report issues: https://github.com/tuannx/claude-prompts/issues
     """
@@ -330,7 +332,7 @@ def query(important, type, limit, db, project):
     # Check if database exists
     actual_db_path = db or indexer.db_path
     if not os.path.exists(actual_db_path):
-        console.print(f"❌ [bold red]Database not found for {project_path}. Run 'claude-code-indexer index' first.[/bold red]")
+        console.print(f"❌ [bold red]Database not found for {project_path}. Run 'cci index' first.[/bold red]")
         sys.exit(1)
     
     if important:
@@ -389,11 +391,11 @@ def search(terms, db, mode, limit, type, project):
     """Search for code entities by name. Supports multiple keywords.
     
     Examples:
-        claude-code-indexer search auth
-        claude-code-indexer search auth user login --mode any
-        claude-code-indexer search database connection --mode all
-        claude-code-indexer search service firestore --type class --limit 10
-        claude-code-indexer search process --type function
+        cci search auth
+        cci search auth user login --mode any
+        cci search database connection --mode all
+        cci search service firestore --type class --limit 10
+        cci search process --type function
     """
     show_app_header()
     
@@ -417,7 +419,7 @@ def search(terms, db, mode, limit, type, project):
     # Check if database exists
     actual_db_path = db or indexer.db_path
     if not os.path.exists(actual_db_path):
-        console.print(f"❌ [bold red]Database not found for {project_path}. Run 'claude-code-indexer index' first.[/bold red]")
+        console.print(f"❌ [bold red]Database not found for {project_path}. Run 'cci index' first.[/bold red]")
         sys.exit(1)
     
     import sqlite3
@@ -527,7 +529,7 @@ def stats(db, cache, project):
     # Check if database exists
     actual_db_path = db or indexer.db_path
     if not os.path.exists(actual_db_path):
-        console.print(f"❌ [bold red]Database not found for {project_path}. Run 'claude-code-indexer index' first.[/bold red]")
+        console.print(f"❌ [bold red]Database not found for {project_path}. Run 'cci index' first.[/bold red]")
         sys.exit(1)
     
     # Show cache stats if requested
@@ -816,7 +818,7 @@ def projects(all):
     
     if not projects:
         console.print("📭 [yellow]No indexed projects found.[/yellow]")
-        console.print("Run 'claude-code-indexer index <path>' to index a project.")
+        console.print("Run 'cci index <path>' to index a project.")
         return
     
     console.print("📚 [bold blue]Indexed Projects[/bold blue]")
@@ -937,7 +939,7 @@ def enhance_metadata(path, limit, force, project):
     - Role tagging and pattern detection
     
     💡 Best Practices:
-    1. Test with: claude-code-indexer enhance . --limit 5
+    1. Test with: cci enhance . --limit 5
     2. Review results before scaling up
     3. Use insights command to query enhanced data
     
@@ -1032,7 +1034,7 @@ def get_insights(path, project):
         insights = indexer.get_analysis_insights()
         
         if not insights:
-            console.print("ℹ️ [yellow]No enhanced metadata found. Run 'claude-code-indexer enhance' first.[/yellow]")
+            console.print("ℹ️ [yellow]No enhanced metadata found. Run 'cci enhance' first.[/yellow]")
             return
         
         # Codebase health
@@ -1130,7 +1132,7 @@ def query_enhanced(path, layer, domain, criticality, min_complexity, limit, proj
         )
         
         if not nodes:
-            console.print("ℹ️ [yellow]No enhanced nodes found matching criteria. Run 'claude-code-indexer enhance' first.[/yellow]")
+            console.print("ℹ️ [yellow]No enhanced nodes found matching criteria. Run 'cci enhance' first.[/yellow]")
             return
         
         # Show filter info
@@ -1204,7 +1206,7 @@ def get_critical_components(path, limit, project):
         critical_components = indexer.get_critical_components(limit=limit)
         
         if not critical_components:
-            console.print("ℹ️ [yellow]No critical components found. Run 'claude-code-indexer enhance' first.[/yellow]")
+            console.print("ℹ️ [yellow]No critical components found. Run 'cci enhance' first.[/yellow]")
             return
         
         console.print(f"\n⚠️ [bold red]Critical Components (Top {len(critical_components)}):[/bold red]\n")
@@ -1256,7 +1258,7 @@ cli.add_command(crash_group)
 
 @cli.command(name='llm-guide')
 def llm_guide():
-    """🤖 Guide for LLMs using claude-code-indexer
+    """🤖 Guide for LLMs using claude-code-indexer (cci)
     
     Special command providing comprehensive usage instructions
     for AI assistants like Claude, ChatGPT, etc.
@@ -1264,10 +1266,10 @@ def llm_guide():
     guide = """🤖 Claude Code Indexer - LLM Usage Guide
 
 🌟 QUICK START for understanding any codebase:
-1. claude-code-indexer index .          # Index the codebase (4-5s)
-2. claude-code-indexer stats            # View overview (0.1s cached)
-3. claude-code-indexer query --important # See key components
-4. claude-code-indexer search <term>    # Find specific code
+1. cci index .          # Index the codebase (4-5s)
+2. cci stats            # View overview (0.1s cached)
+3. cci query --important # See key components
+4. cci search <term>    # Find specific code
 
 ⚠️  SECURITY WARNINGS:
 - NEVER use 'enhance' on code with secrets/API keys
@@ -1276,16 +1278,16 @@ def llm_guide():
 
 🚀 ADVANCED FEATURES:
 1. LLM Enhancement (use carefully):
-   claude-code-indexer enhance . --limit 5  # Test first!
-   claude-code-indexer insights             # View AI analysis
+   cci enhance . --limit 5  # Test first!
+   cci insights             # View AI analysis
    
 2. Multi-keyword search:
-   claude-code-indexer search auth user login  # OR search
-   claude-code-indexer search db conn --mode all # AND search
+   cci search auth user login  # OR search
+   cci search db conn --mode all # AND search
 
 3. Architecture analysis:
-   claude-code-indexer enhanced --layer service
-   claude-code-indexer critical --limit 10
+   cci enhanced --layer service
+   cci critical --limit 10
 
 🐛 ERROR REPORTING for LLMs:
 If you encounter errors, create GitHub issue:
@@ -1309,6 +1311,24 @@ gh issue create --repo tuannx/claude-prompts \\
 📝 More info: https://github.com/tuannx/claude-prompts
 """
     console.print(guide)
+
+
+# Add mcp-daemon command group
+@cli.group(name='mcp-daemon')
+def mcp_daemon():
+    """Manage MCP persistent daemon for better performance"""
+    pass
+
+
+# Import daemon commands and register them
+from .commands.mcp_daemon import start, stop, restart, status as daemon_status, logs, config as daemon_config
+
+mcp_daemon.add_command(start)
+mcp_daemon.add_command(stop)
+mcp_daemon.add_command(restart)
+mcp_daemon.add_command(daemon_status, name='status')
+mcp_daemon.add_command(logs)
+mcp_daemon.add_command(daemon_config, name='config')
 
 
 def main():

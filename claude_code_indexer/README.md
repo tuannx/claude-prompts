@@ -1,6 +1,8 @@
-# Claude Code Indexer
+# Claude Code Indexer (cci)
 
 A powerful code indexing tool that uses graph databases to analyze and understand code structure. Built specifically for Claude Code assistant workflows.
+
+**🚀 Quick tip:** Use `cci` instead of `claude-code-indexer` for all commands!
 
 ## Features
 
@@ -32,6 +34,8 @@ pip install claude-code-indexer
 
 # With MCP support for Claude Desktop/Code
 pip install 'claude-code-indexer[mcp]'
+
+# After installation, use 'cci' for all commands!
 ```
 
 ### From Source
@@ -48,13 +52,13 @@ The package includes auto-update functionality:
 
 ```bash
 # Check for updates
-claude-code-indexer update --check-only
+cci update --check-only
 
 # Update to latest version
-claude-code-indexer update
+cci update
 
 # Sync CLAUDE.md with latest template
-claude-code-indexer sync
+cci sync
 ```
 
 Updates will also be checked automatically when you run any command.
@@ -100,7 +104,7 @@ Automatically respects patterns from:
 
 ```bash
 cd your-project
-claude-code-indexer init
+cci init  # Short and sweet!
 ```
 
 This will:
@@ -112,57 +116,57 @@ This will:
 
 ```bash
 # Index current directory
-claude-code-indexer index .
+cci index .
 
 # Index specific directory
-claude-code-indexer index /path/to/your/code
+cci index /path/to/your/code
 
 # Index with custom patterns
-claude-code-indexer index . --patterns "*.py,*.js,*.ts"
+cci index . --patterns "*.py,*.js,*.ts"
 
 # Index with custom ignore patterns
-claude-code-indexer index . --custom-ignore "tests/" --custom-ignore "*.test.py"
+cci index . --custom-ignore "tests/" --custom-ignore "*.test.py"
 
 # See what will be ignored before indexing
-claude-code-indexer index . --show-ignored
+cci index . --show-ignored
 ```
 
 ### 3. Query your code
 
 ```bash
 # Show most important code entities
-claude-code-indexer query --important
+cci query --important
 
 # Show all entities of specific type
-claude-code-indexer query --type class
+cci query --type class
 
 # Search for specific terms (single keyword)
-claude-code-indexer search UserModel
+cci search UserModel
 
 # Search with multiple keywords (OR logic)
-claude-code-indexer search auth user login
+cci search auth user login
 
 # Search with multiple keywords (AND logic - must match all)
-claude-code-indexer search database connection --mode all
+cci search database connection --mode all
 
 # View indexing statistics
-claude-code-indexer stats
+cci stats
 ```
 
 ### 4. Manage projects
 
 ```bash
 # List all indexed projects
-claude-code-indexer projects
+cci projects
 
 # Remove a project's index
-claude-code-indexer remove project-name
+cci remove project-name
 
 # Clean up orphaned projects
-claude-code-indexer clean
+cci clean
 
 # Query a specific project
-claude-code-indexer query --important --project /path/to/project
+cci query --important --project /path/to/project
 ```
 
 ## CLI Commands
@@ -171,7 +175,7 @@ claude-code-indexer query --important --project /path/to/project
 Initialize Claude Code Indexer in current directory.
 
 ```bash
-claude-code-indexer init [--force]
+cci init [--force]
 ```
 
 Options:
@@ -181,7 +185,7 @@ Options:
 Index source code in specified directory.
 
 ```bash
-claude-code-indexer index PATH [options]
+cci index PATH [options]
 ```
 
 Options:
@@ -197,7 +201,7 @@ Options:
 Query indexed code entities.
 
 ```bash
-claude-code-indexer query [options]
+cci query [options]
 ```
 
 Options:
@@ -211,7 +215,7 @@ Options:
 Search for code entities by name. Supports multiple keywords.
 
 ```bash
-claude-code-indexer search TERMS... [options]
+cci search TERMS... [options]
 ```
 
 Options:
@@ -222,20 +226,20 @@ Options:
 Examples:
 ```bash
 # Single keyword
-claude-code-indexer search auth
+cci search auth
 
 # Multiple keywords (match any)
-claude-code-indexer search auth user login
+cci search auth user login
 
 # Multiple keywords (must match all)
-claude-code-indexer search database connection --mode all
+cci search database connection --mode all
 ```
 
 ### `stats`
 Show indexing statistics.
 
 ```bash
-claude-code-indexer stats [options]
+cci stats [options]
 ```
 
 Options:
@@ -247,7 +251,7 @@ Options:
 List all indexed projects.
 
 ```bash
-claude-code-indexer projects [--all]
+cci projects [--all]
 ```
 
 Options:
@@ -257,7 +261,7 @@ Options:
 Remove an indexed project.
 
 ```bash
-claude-code-indexer remove PROJECT [--force]
+cci remove PROJECT [--force]
 ```
 
 Options:
@@ -267,7 +271,7 @@ Options:
 Clean up orphaned project indexes.
 
 ```bash
-claude-code-indexer clean
+cci clean
 ```
 
 ### `migrate`
@@ -275,16 +279,16 @@ Manage database schema migrations.
 
 ```bash
 # Check and apply migrations
-claude-code-indexer migrate
+cci migrate
 
 # Show what would be migrated without applying changes
-claude-code-indexer migrate --dry-run
+cci migrate --dry-run
 
 # Migrate to a specific version
-claude-code-indexer migrate --target-version 1.6.0
+cci migrate --target-version 1.6.0
 
 # Force migration even if database appears corrupted
-claude-code-indexer migrate --force
+cci migrate --force
 ```
 
 The migration system:
@@ -299,26 +303,26 @@ Manage background indexing service for automatic updates.
 
 ```bash
 # Start the background service
-claude-code-indexer background start
+cci background start
 
 # Stop the background service
-claude-code-indexer background stop
+cci background stop
 
 # Check service status
-claude-code-indexer background status
+cci background status
 
 # Set indexing interval for current project (in seconds)
-claude-code-indexer background set-interval --interval 600  # 10 minutes
+cci background set-interval --interval 600  # 10 minutes
 
 # Set default interval for all projects
-claude-code-indexer background set-interval --interval 300  # 5 minutes (default)
+cci background set-interval --interval 300  # 5 minutes (default)
 
 # Disable background indexing for a project
-claude-code-indexer background set-interval --project /path/to/project --interval -1
+cci background set-interval --project /path/to/project --interval -1
 
 # Enable/disable the service globally
-claude-code-indexer background config --enable
-claude-code-indexer background config --disable
+cci background config --enable
+cci background config --disable
 ```
 
 Background indexing automatically keeps your code indexes up-to-date:
@@ -363,7 +367,7 @@ CREATE TABLE relationships (
 
 ## Integration with Claude Code
 
-After running `claude-code-indexer init`, your `CLAUDE.md` file will include:
+After running `cci init`, your `CLAUDE.md` file will include:
 
 - Complete setup instructions
 - Database schema documentation
@@ -384,10 +388,10 @@ Direct integration with Claude Desktop and Claude Code using Model Context Proto
 pip install 'claude-code-indexer[mcp]'
 
 # Auto-configure Claude Desktop/Code (auto-detects which is installed)
-claude-code-indexer mcp install
+cci mcp install
 
 # Check status
-claude-code-indexer mcp status
+cci mcp status
 ```
 
 ### MCP Tools Available
@@ -479,13 +483,13 @@ View detailed cache performance metrics:
 
 ```bash
 # Show cache statistics with project stats
-claude-code-indexer stats --cache
+cci stats --cache
 
 # Standalone cache management
-claude-code-indexer cache
+cci cache
 
 # Clear old cache entries
-claude-code-indexer cache --clear --days 7
+cci cache --clear --days 7
 ```
 
 ### Performance Benchmarks
@@ -494,6 +498,33 @@ claude-code-indexer cache --clear --days 7
 - **Indexing Speed**: 22.4 files/sec (fresh index)
 - **Cache Speedup**: 64.6x faster on subsequent runs
 - **LLM Enhancement**: 1,116 nodes/sec
+
+## Development
+
+### Running Tests
+
+Tests can be run in parallel for faster execution:
+
+```bash
+# Install with dev dependencies
+pip install -e ".[dev]"
+
+# Run tests in parallel (auto-detect CPU cores)
+pytest -n auto
+
+# Run tests in parallel with specific worker count
+pytest -n 4
+
+# Run tests sequentially (default)
+pytest
+
+# Run tests with coverage in parallel
+pytest -n auto --cov=claude_code_indexer --cov-report=term
+```
+
+Parallel test execution is powered by `pytest-xdist` and can significantly speed up test runs on multi-core systems.
+
+**Note**: Some tests may fail when run in parallel due to shared resources (e.g., database files, cache directories). If you encounter failures with parallel execution, try running tests sequentially or with fewer workers.
 - **Memory Usage**: <100MB for thousands of files
 
 #### Scalability
