@@ -28,6 +28,8 @@ from .indexer import CodeGraphIndexer
 from .cache_manager import CacheManager
 from .parallel_processor import ParallelFileProcessor
 from .storage_manager import get_storage_manager
+from .llm_memory_storage import LLMMemoryStorage
+from .pattern_memory_manager import PatternMemoryManager, PatternType, BestPracticeCategory
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -892,6 +894,694 @@ def update_node_metadata(project_path: str, node_id: int, updates: Dict[str, Any
         return f"❌ Invalid JSON in updates: {str(e)}"
     except Exception as e:
         return f"❌ Update failed: {str(e)}"
+
+
+@mcp.tool()
+def store_llm_memory(
+    project_path: str,
+    node_id: int,
+    memory_type: str,
+    content: str,
+    llm_name: str = "claude",
+    metadata: Optional[Dict[str, Any]] = None,
+    tags: Optional[List[str]] = None
+) -> str:
+    """Store LLM analysis/insights as memory attached to a code node.
+    
+    This allows LLMs like Claude to build up contextual understanding over time
+    by storing their analysis, insights, TODOs, warnings, etc.
+    
+    Args:
+        project_path: Project directory path (required)
+        node_id: ID of the code node this memory relates to
+        memory_type: Type of memory - "analysis", "insight", "context", "todo", "warning", "explanation"
+        content: The actual memory content to store
+        llm_name: Name/version of the LLM (default: "claude")
+        metadata: Optional structured metadata as JSON dict
+        tags: Optional list of tags for categorization
+    
+    Returns:
+        Success message with memory ID
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        memory_storage = LLMMemoryStorage(indexer.db_path)
+        
+        # Handle metadata conversion
+        if metadata and isinstance(metadata, str):
+            metadata = json.loads(metadata)
+        
+        # Store the memory
+        memory_id = memory_storage.store_memory(
+            node_id=node_id,
+            llm_name=llm_name,
+            memory_type=memory_type,
+            content=content,
+            metadata=metadata,
+            tags=tags
+        )
+        
+        return f"✅ Memory stored successfully (ID: {memory_id})\n\n📝 Type: {memory_type}\n🤖 LLM: {llm_name}\n🏷️ Tags: {', '.join(tags or [])}"
+        
+    except json.JSONDecodeError as e:
+        return f"❌ Invalid JSON in metadata: {str(e)}"
+    except Exception as e:
+        return f"❌ Failed to store memory: {str(e)}"
+
+
+@mcp.tool()
+def get_llm_memories(
+    project_path: str,
+    node_id: Optional[int] = None,
+    memory_type: Optional[str] = None,
+    limit: int = 50
+) -> str:
+    """Retrieve LLM memories for code understanding.
+    
+    Args:
+        project_path: Project directory path (required)
+        node_id: Filter by specific node ID (optional)
+        memory_type: Filter by type - "analysis", "insight", "context", "todo", "warning", etc. (optional)
+        limit: Maximum number of memories to return (default: 50)
+    
+    Returns:
+        Formatted list of memories with context
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        memory_storage = LLMMemoryStorage(indexer.db_path)
+        
+        # Retrieve memories
+        memories = memory_storage.get_memories(
+            node_id=node_id,
+            memory_type=memory_type,
+            limit=limit
+        )
+        
+        if not memories:
+            return "ℹ️ No memories found matching the criteria."
+        
+        output = f"🧠 Found {len(memories)} LLM Memories\n\n"
+        
+        # Group by node for better readability
+        by_node = {}
+        for memory in memories:
+            nid = memory['node_id']
+            if nid not in by_node:
+                by_node[nid] = {
+                    'node_name': memory['node_name'],
+                    'node_type': memory['node_type'],
+                    'file_path': memory['file_path'],
+                    'memories': []
+                }
+            by_node[nid]['memories'].append(memory)
+        
+        for nid, node_data in by_node.items():
+            output += f"📁 **{node_data['node_name']}** ({node_data['node_type']})\n"
+            output += f"   Path: {node_data['file_path']}\n\n"
+            
+            for mem in node_data['memories']:
+                output += f"   • [{mem['memory_type'].upper()}] by {mem['llm_name']}\n"
+                output += f"     {mem['content']}\n"
+                if mem.get('tags'):
+                    output += f"     🏷️ Tags: {', '.join(mem['tags'])}\n"
+                output += f"     ⏰ Updated: {mem['updated_at']}\n\n"
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Failed to retrieve memories: {str(e)}"
+
+
+@mcp.tool()
+def search_llm_memories(project_path: str, search_term: str, limit: int = 30) -> str:
+    """Search through LLM memories by content.
+    
+    Args:
+        project_path: Project directory path (required)
+        search_term: Term to search for in memory content
+        limit: Maximum results (default: 30)
+    
+    Returns:
+        Matching memories with context
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        memory_storage = LLMMemoryStorage(indexer.db_path)
+        
+        # Search memories
+        memories = memory_storage.search_memories(search_term, limit=limit)
+        
+        if not memories:
+            return f"ℹ️ No memories found containing '{search_term}'."
+        
+        output = f"🔍 Found {len(memories)} memories containing '{search_term}'\n\n"
+        
+        for i, mem in enumerate(memories, 1):
+            output += f"{i}. **{mem['node_name']}** - {mem['memory_type']}\n"
+            output += f"   📁 {mem['file_path']}\n"
+            
+            # Highlight search term in content
+            content = mem['content']
+            if len(content) > 200:
+                # Find position of search term and show context
+                pos = content.lower().find(search_term.lower())
+                if pos > -1:
+                    start = max(0, pos - 50)
+                    end = min(len(content), pos + len(search_term) + 50)
+                    content = f"...{content[start:end]}..."
+            
+            output += f"   💭 {content}\n"
+            output += f"   🤖 By: {mem['llm_name']} | ⏰ {mem['updated_at']}\n\n"
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Failed to search memories: {str(e)}"
+
+
+@mcp.tool()
+def get_node_memory_summary(project_path: str, node_id: int) -> str:
+    """Get a comprehensive summary of all LLM memories for a specific node.
+    
+    Args:
+        project_path: Project directory path (required)
+        node_id: The node ID to get memory summary for
+    
+    Returns:
+        Summary of all memories grouped by type and LLM
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        memory_storage = LLMMemoryStorage(indexer.db_path)
+        
+        # Get node info first
+        node_info = indexer.get_node_info(node_id)
+        if not node_info:
+            return f"❌ Node {node_id} not found."
+        
+        # Get memory summary
+        summary = memory_storage.get_node_summary(node_id)
+        
+        output = f"🧠 Memory Summary for **{node_info['name']}**\n"
+        output += f"📁 Path: {node_info['file_path']}\n"
+        output += f"📊 Total memories: {summary['total_memories']}\n\n"
+        
+        if summary['total_memories'] == 0:
+            output += "ℹ️ No memories stored for this node yet."
+            return output
+        
+        # Show memories by type
+        output += "**By Type:**\n"
+        for mem_type, memories in summary['by_type'].items():
+            output += f"• {mem_type}: {len(memories)} entries\n"
+            # Show latest entry for each type
+            latest = max(memories, key=lambda m: m['updated_at'])
+            output += f"  Latest: {latest['content'][:100]}...\n\n"
+        
+        # Show memories by LLM
+        output += "**By LLM:**\n"
+        for llm, memories in summary['by_llm'].items():
+            output += f"• {llm}: {len(memories)} entries\n"
+        
+        # Show tags
+        if summary['tags']:
+            output += f"\n🏷️ **Tags:** {', '.join(summary['tags'])}\n"
+        
+        output += f"\n⏰ **Last updated:** {summary['latest_update']}"
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Failed to get memory summary: {str(e)}"
+
+
+@mcp.tool()
+def store_coding_pattern(
+    project_path: str,
+    pattern_type: str,
+    title: str,
+    description: str,
+    example_code: Optional[str] = None,
+    anti_pattern: Optional[str] = None,
+    when_to_use: Optional[str] = None,
+    benefits: Optional[List[str]] = None,
+    trade_offs: Optional[List[str]] = None,
+    tags: Optional[List[str]] = None,
+    llm_name: str = "claude",
+    confidence: float = 1.0
+) -> str:
+    """Store a coding pattern for reuse across the project.
+    
+    This allows LLMs to build up a library of proven patterns, architectural decisions,
+    and coding standards that can be consistently applied.
+    
+    Args:
+        project_path: Project directory path (required)
+        pattern_type: Type of pattern - "architecture", "design_pattern", "code_style", 
+                     "naming_convention", "error_handling", "security", "performance", 
+                     "testing", "api_design", "database", "deployment", "documentation"
+        title: Short descriptive title for the pattern
+        description: Detailed description of the pattern
+        example_code: Code example demonstrating the pattern (optional)
+        anti_pattern: Example of what NOT to do (optional)
+        when_to_use: Guidelines on when to apply this pattern (optional)
+        benefits: List of benefits from using this pattern (optional)
+        trade_offs: List of trade-offs to consider (optional)
+        tags: List of tags for categorization (optional)
+        llm_name: Name of the LLM storing this pattern (default: "claude")
+        confidence: Confidence score 0.0-1.0 (default: 1.0)
+    
+    Returns:
+        Success message with pattern ID
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        pattern_manager = PatternMemoryManager(indexer.db_path)
+        
+        # Validate pattern type
+        try:
+            pattern_type_enum = PatternType(pattern_type.lower())
+        except ValueError:
+            valid_types = [pt.value for pt in PatternType]
+            return f"❌ Invalid pattern type '{pattern_type}'. Valid types: {', '.join(valid_types)}"
+        
+        # Store the pattern
+        pattern_id = pattern_manager.store_pattern(
+            pattern_type=pattern_type_enum,
+            title=title,
+            description=description,
+            example_code=example_code,
+            anti_pattern=anti_pattern,
+            when_to_use=when_to_use,
+            benefits=benefits,
+            trade_offs=trade_offs,
+            tags=tags,
+            llm_name=llm_name,
+            confidence=confidence
+        )
+        
+        return f"✅ Coding pattern stored successfully!\n\n📋 Pattern ID: {pattern_id}\n🏷️ Type: {pattern_type}\n📝 Title: {title}\n🏷️ Tags: {', '.join(tags or [])}\n🎯 Confidence: {confidence}"
+        
+    except Exception as e:
+        return f"❌ Failed to store coding pattern: {str(e)}"
+
+
+@mcp.tool()
+def store_best_practice(
+    project_path: str,
+    category: str,
+    title: str,
+    description: str,
+    rationale: str,
+    examples: Optional[List[str]] = None,
+    counter_examples: Optional[List[str]] = None,
+    enforcement_level: str = "should",
+    scope: str = "project",
+    tools_required: Optional[List[str]] = None,
+    tags: Optional[List[str]] = None,
+    priority: str = "medium",
+    llm_name: str = "claude"
+) -> str:
+    """Store a best practice for consistent application across the project.
+    
+    This enables LLMs to establish and maintain coding standards, team practices,
+    and project-specific guidelines.
+    
+    Args:
+        project_path: Project directory path (required)
+        category: Category of best practice - "team_standards", "project_rules",
+                 "industry_best", "company_policy", "tool_usage", "code_review",
+                 "refactoring", "maintenance"
+        title: Short title for the best practice
+        description: Detailed description of the practice
+        rationale: Why this is considered a best practice
+        examples: List of good implementation examples (optional)
+        counter_examples: List of what to avoid (optional)
+        enforcement_level: "must", "should", "could", or "avoid" (default: "should")
+        scope: "project", "team", "company", or "global" (default: "project")
+        tools_required: List of tools needed to implement (optional)
+        tags: List of tags for categorization (optional)
+        priority: "high", "medium", or "low" (default: "medium")
+        llm_name: Name of the LLM storing this practice (default: "claude")
+    
+    Returns:
+        Success message with practice ID
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        pattern_manager = PatternMemoryManager(indexer.db_path)
+        
+        # Validate category
+        try:
+            category_enum = BestPracticeCategory(category.lower())
+        except ValueError:
+            valid_categories = [cat.value for cat in BestPracticeCategory]
+            return f"❌ Invalid category '{category}'. Valid categories: {', '.join(valid_categories)}"
+        
+        # Validate enforcement level and priority
+        valid_enforcement = ["must", "should", "could", "avoid"]
+        valid_priorities = ["high", "medium", "low"]
+        
+        if enforcement_level not in valid_enforcement:
+            return f"❌ Invalid enforcement level '{enforcement_level}'. Valid levels: {', '.join(valid_enforcement)}"
+        
+        if priority not in valid_priorities:
+            return f"❌ Invalid priority '{priority}'. Valid priorities: {', '.join(valid_priorities)}"
+        
+        # Store the best practice
+        practice_id = pattern_manager.store_best_practice(
+            category=category_enum,
+            title=title,
+            description=description,
+            rationale=rationale,
+            examples=examples,
+            counter_examples=counter_examples,
+            enforcement_level=enforcement_level,
+            scope=scope,
+            tools_required=tools_required,
+            tags=tags,
+            priority=priority,
+            llm_name=llm_name
+        )
+        
+        return f"✅ Best practice stored successfully!\n\n📋 Practice ID: {practice_id}\n🏷️ Category: {category}\n📝 Title: {title}\n⚖️ Enforcement: {enforcement_level}\n🎯 Priority: {priority}\n🏷️ Tags: {', '.join(tags or [])}"
+        
+    except Exception as e:
+        return f"❌ Failed to store best practice: {str(e)}"
+
+
+@mcp.tool()
+def get_coding_patterns(
+    project_path: str,
+    pattern_type: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    min_confidence: float = 0.0,
+    limit: int = 20
+) -> str:
+    """Retrieve coding patterns stored for the project.
+    
+    Args:
+        project_path: Project directory path (required)
+        pattern_type: Filter by pattern type (optional)
+        tags: Filter by tags (optional)
+        min_confidence: Minimum confidence score (default: 0.0)
+        limit: Maximum number of patterns to return (default: 20)
+    
+    Returns:
+        Formatted list of coding patterns
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        pattern_manager = PatternMemoryManager(indexer.db_path)
+        
+        # Convert pattern_type string to enum if provided
+        pattern_type_enum = None
+        if pattern_type:
+            try:
+                pattern_type_enum = PatternType(pattern_type.lower())
+            except ValueError:
+                valid_types = [pt.value for pt in PatternType]
+                return f"❌ Invalid pattern type '{pattern_type}'. Valid types: {', '.join(valid_types)}"
+        
+        patterns = pattern_manager.get_patterns(
+            pattern_type=pattern_type_enum,
+            tags=tags,
+            min_confidence=min_confidence,
+            limit=limit
+        )
+        
+        if not patterns:
+            return "ℹ️ No coding patterns found matching the criteria."
+        
+        output = f"🎯 Found {len(patterns)} Coding Patterns\n\n"
+        
+        for i, pattern in enumerate(patterns, 1):
+            output += f"{i}. **{pattern['title']}** ({pattern['pattern_type']})\n"
+            output += f"   📝 {pattern['description'][:100]}{'...' if len(pattern['description']) > 100 else ''}\n"
+            output += f"   🎯 Confidence: {pattern['confidence']:.2f} | 📊 Used: {pattern['usage_frequency']} times\n"
+            
+            if pattern['tags']:
+                output += f"   🏷️ Tags: {', '.join(pattern['tags'])}\n"
+            
+            if pattern['example_code']:
+                output += f"   💻 Has code example\n"
+            
+            if pattern['when_to_use']:
+                output += f"   📋 When to use: {pattern['when_to_use'][:80]}{'...' if len(pattern['when_to_use']) > 80 else ''}\n"
+            
+            output += "\n"
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Failed to retrieve coding patterns: {str(e)}"
+
+
+@mcp.tool()
+def get_best_practices(
+    project_path: str,
+    category: Optional[str] = None,
+    priority: Optional[str] = None,
+    enforcement_level: Optional[str] = None,
+    scope: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    limit: int = 20
+) -> str:
+    """Retrieve best practices stored for the project.
+    
+    Args:
+        project_path: Project directory path (required)
+        category: Filter by category (optional)
+        priority: Filter by priority - "high", "medium", "low" (optional)
+        enforcement_level: Filter by enforcement - "must", "should", "could", "avoid" (optional)
+        scope: Filter by scope - "project", "team", "company", "global" (optional)
+        tags: Filter by tags (optional)
+        limit: Maximum number of practices to return (default: 20)
+    
+    Returns:
+        Formatted list of best practices
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        pattern_manager = PatternMemoryManager(indexer.db_path)
+        
+        # Convert category string to enum if provided
+        category_enum = None
+        if category:
+            try:
+                category_enum = BestPracticeCategory(category.lower())
+            except ValueError:
+                valid_categories = [cat.value for cat in BestPracticeCategory]
+                return f"❌ Invalid category '{category}'. Valid categories: {', '.join(valid_categories)}"
+        
+        practices = pattern_manager.get_best_practices(
+            category=category_enum,
+            priority=priority,
+            enforcement_level=enforcement_level,
+            scope=scope,
+            tags=tags,
+            limit=limit
+        )
+        
+        if not practices:
+            return "ℹ️ No best practices found matching the criteria."
+        
+        output = f"⭐ Found {len(practices)} Best Practices\n\n"
+        
+        for i, practice in enumerate(practices, 1):
+            output += f"{i}. **{practice['title']}** ({practice['category']})\n"
+            output += f"   📝 {practice['description'][:100]}{'...' if len(practice['description']) > 100 else ''}\n"
+            output += f"   ⚖️ {practice['enforcement_level'].upper()} | 🎯 Priority: {practice['priority']} | 📏 Scope: {practice['scope']}\n"
+            
+            if practice['rationale']:
+                output += f"   💡 Why: {practice['rationale'][:80]}{'...' if len(practice['rationale']) > 80 else ''}\n"
+            
+            if practice['tags']:
+                output += f"   🏷️ Tags: {', '.join(practice['tags'])}\n"
+            
+            if practice['tools_required']:
+                output += f"   🔧 Tools: {', '.join(practice['tools_required'])}\n"
+            
+            if practice['examples']:
+                output += f"   ✅ Has {len(practice['examples'])} example(s)\n"
+            
+            output += "\n"
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Failed to retrieve best practices: {str(e)}"
+
+
+@mcp.tool()
+def search_patterns_and_practices(
+    project_path: str,
+    search_term: str,
+    include_patterns: bool = True,
+    include_practices: bool = True,
+    limit: int = 15
+) -> str:
+    """Search across both coding patterns and best practices.
+    
+    Args:
+        project_path: Project directory path (required)
+        search_term: Term to search for in titles, descriptions, and content
+        include_patterns: Whether to include coding patterns in results (default: True)
+        include_practices: Whether to include best practices in results (default: True)
+        limit: Maximum results per category (default: 15)
+    
+    Returns:
+        Combined search results from patterns and practices
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        pattern_manager = PatternMemoryManager(indexer.db_path)
+        
+        results = pattern_manager.search_patterns_and_practices(
+            search_term=search_term,
+            include_patterns=include_patterns,
+            include_practices=include_practices,
+            limit=limit
+        )
+        
+        output = f"🔍 Search Results for '{search_term}'\n\n"
+        
+        if include_patterns and results['patterns']:
+            output += f"🎯 **Coding Patterns** ({len(results['patterns'])} found)\n\n"
+            for i, pattern in enumerate(results['patterns'], 1):
+                output += f"{i}. **{pattern['title']}** ({pattern['pattern_type']})\n"
+                output += f"   📝 {pattern['description'][:80]}{'...' if len(pattern['description']) > 80 else ''}\n"
+                output += f"   🎯 Confidence: {pattern['confidence']:.2f}\n\n"
+        
+        if include_practices and results['best_practices']:
+            output += f"⭐ **Best Practices** ({len(results['best_practices'])} found)\n\n"
+            for i, practice in enumerate(results['best_practices'], 1):
+                output += f"{i}. **{practice['title']}** ({practice['category']})\n"
+                output += f"   📝 {practice['description'][:80]}{'...' if len(practice['description']) > 80 else ''}\n"
+                output += f"   ⚖️ {practice['enforcement_level'].upper()} | 🎯 {practice['priority']}\n\n"
+        
+        if not results['patterns'] and not results['best_practices']:
+            output += f"ℹ️ No patterns or practices found containing '{search_term}'."
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Failed to search patterns and practices: {str(e)}"
+
+
+@mcp.tool()
+def get_project_standards_summary(project_path: str) -> str:
+    """Get a comprehensive summary of all project standards, patterns, and practices.
+    
+    Args:
+        project_path: Project directory path (required)
+    
+    Returns:
+        Summary of project coding standards and established patterns
+    """
+    # Validate project path
+    project_path = os.path.abspath(os.path.expanduser(project_path))
+    if not os.path.exists(project_path):
+        return f"❌ Project path does not exist: {project_path}"
+    
+    try:
+        indexer = project_manager.get_indexer(project_path)
+        pattern_manager = PatternMemoryManager(indexer.db_path)
+        
+        summary = pattern_manager.get_project_standards_summary()
+        
+        output = f"📊 **Project Standards Summary**\n\n"
+        
+        # Overall statistics
+        stats = summary['summary']
+        output += f"📈 **Overview**\n"
+        output += f"• Total Patterns: {stats['total_patterns']}\n"
+        output += f"• Total Practices: {stats['total_practices']}\n"
+        output += f"• Avg Pattern Confidence: {stats['avg_pattern_confidence']:.2f}\n"
+        output += f"• Avg Practice Compliance: {stats['avg_practice_compliance']:.2f}\n\n"
+        
+        # Pattern breakdown
+        if summary['pattern_statistics']:
+            output += f"🎯 **Patterns by Type**\n"
+            for pattern_type, data in summary['pattern_statistics'].items():
+                output += f"• {pattern_type}: {data['count']} patterns (avg confidence: {data['avg_confidence']:.2f})\n"
+            output += "\n"
+        
+        # Practice breakdown
+        if summary['practice_statistics']:
+            output += f"⭐ **Practices by Category**\n"
+            for category, data in summary['practice_statistics'].items():
+                output += f"• {category}: {data['count']} practices (avg compliance: {data['avg_compliance']:.2f})\n"
+            output += "\n"
+        
+        # High priority practices
+        if summary['high_priority_practices']:
+            output += f"🚨 **High Priority Practices**\n"
+            for practice in summary['high_priority_practices'][:5]:
+                output += f"• **{practice['title']}** ({practice['category']}) - {practice['enforcement_level']}\n"
+            output += "\n"
+        
+        # Popular patterns
+        if summary['popular_patterns']:
+            output += f"🔥 **Most Used Patterns**\n"
+            for pattern in summary['popular_patterns'][:5]:
+                output += f"• **{pattern['title']}** ({pattern['pattern_type']}) - used {pattern['usage_frequency']} times\n"
+            output += "\n"
+        
+        if stats['total_patterns'] == 0 and stats['total_practices'] == 0:
+            output += "ℹ️ No patterns or practices have been established yet.\n"
+            output += "💡 Use `store_coding_pattern()` and `store_best_practice()` to build your project standards!"
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Failed to get project standards summary: {str(e)}"
 
 
 def main():

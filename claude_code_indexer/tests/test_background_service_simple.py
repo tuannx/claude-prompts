@@ -361,5 +361,27 @@ class TestBackgroundIndexingServiceSimple:
             assert offset >= 0
 
 
+# Helper functions for testing - merged from test_background_service.py
+def test_background_service_import():
+    """Test that BackgroundIndexingService can be imported"""
+    from claude_code_indexer.background_service import BackgroundIndexingService
+    assert BackgroundIndexingService is not None
+
+
+def test_background_service_constants():
+    """Test service constants and default values"""
+    from claude_code_indexer.background_service import BackgroundIndexingService
+    
+    # Test that we can create instance
+    with patch('claude_code_indexer.background_service.get_storage_manager') as mock_storage:
+        mock_storage.return_value.app_home = Path("/tmp")
+        service = BackgroundIndexingService()
+        
+        # Test default values
+        assert service.max_concurrent_indexing == 2
+        assert service.max_cpu_percent == 50
+        assert service.max_memory_mb == 500
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

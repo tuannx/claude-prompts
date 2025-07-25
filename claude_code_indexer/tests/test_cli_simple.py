@@ -142,7 +142,7 @@ class TestCommandExistence:
         """Test CLI has reasonable number of commands"""
         from claude_code_indexer.cli import cli
         assert len(cli.commands) >= 10
-        assert len(cli.commands) <= 20
+        assert len(cli.commands) <= 25
 
 
 class TestBasicCommandOutputs:

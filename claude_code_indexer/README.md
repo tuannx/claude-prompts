@@ -23,6 +23,7 @@ A powerful code indexing tool that uses graph databases to analyze and understan
 - 🏗️ **Infrastructure detection** - Auto-detects databases, APIs, cloud services, DevOps tools (v1.13.0+)
 - 🎯 **Professional CLI** - App name and version header on all commands (v1.13.0+)
 - 🔄 **Automatic database migrations** - Seamless schema updates with backup/rollback (v1.14.0+)
+- 🧠 **LLM Memory Storage** - LLMs can store and retrieve their own analysis, insights, and context (v1.21.2+)
 
 ## Installation
 
@@ -439,12 +440,56 @@ search_code("/path/to/project", "auth user login", mode="all")
 get_ignore_patterns("/path/to/project")
 ```
 
-### Benefits
+### LLM Memory Storage (v1.21.2+)
+
+The revolutionary LLM Memory Storage system allows Claude and other LLMs to store and retrieve their own analysis, insights, and context as persistent memory attached to code nodes.
+
+#### Memory Tools
+- **store_llm_memory()**: Store analysis, insights, TODOs, warnings as persistent memory
+- **get_llm_memories()**: Retrieve stored memories with flexible filtering
+- **search_llm_memories()**: Search through memory content
+- **get_node_memory_summary()**: Comprehensive memory overview per code node
+
+#### Memory Types
+- `analysis`: Architectural analysis, design pattern detection
+- `insight`: Security insights, performance observations  
+- `todo`: Action items, improvement suggestions
+- `warning`: Code quality issues, potential problems
+- `context`: Background information, business logic explanations
+
+#### Example Usage
+```python
+# Store architectural insight
+store_llm_memory(
+    project_path=".",
+    node_id=42,
+    memory_type="analysis",
+    content="This UserService follows repository pattern with dependency injection.",
+    tags=["architecture", "repository-pattern", "di"]
+)
+
+# Retrieve all memories for a node
+get_llm_memories(project_path=".", node_id=42)
+
+# Search for security-related memories
+search_llm_memories(project_path=".", search_term="security")
+```
+
+#### Benefits for LLMs
+- **Persistent Understanding**: Build knowledge across sessions
+- **Cumulative Learning**: Each interaction adds to understanding
+- **Context Retention**: Remember previous analysis and decisions
+- **Consistent Quality**: Apply learned patterns to new code
+
+See [LLM_MEMORY_GUIDE.md](LLM_MEMORY_GUIDE.md) for complete documentation.
+
+### MCP Integration Benefits
 
 - **Zero friction**: No need to type CLI commands in Claude Desktop
 - **Auto-indexing**: Projects indexed when opened
 - **Rich UI**: Visual code exploration
 - **Session persistence**: Maintains context between chats
+- **Memory Storage**: LLMs build persistent understanding over time
 
 ## Graph Analysis Features
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 # Define the working test files
 WORKING_TESTS = [
-    "tests/test_background_service.py",
+    "tests/test_background_service_simple.py",
     "tests/test_cli_simple.py", 
     "tests/test_mcp.py",
     "tests/test_memory_cache_unit.py",
