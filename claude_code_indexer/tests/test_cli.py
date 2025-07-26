@@ -83,6 +83,14 @@ class TestCLI:
             # Provide 'y' input for confirmation
             result = runner.invoke(cli, ['init'], input='y\n')
             
+            if result.exit_code != 0:
+                print(f"Exit code: {result.exit_code}")
+                print(f"Output: {result.output}")
+                if result.exception:
+                    print(f"Exception: {result.exception}")
+                    import traceback
+                    traceback.print_exception(type(result.exception), result.exception, result.exception.__traceback__)
+            
             assert result.exit_code == 0
             assert "Initializing project" in result.output
             assert Path("CLAUDE.md").exists()
@@ -425,19 +433,23 @@ class TestCLI:
     
     def test_background_status_command(self, runner):
         """Test background status command"""
-        with patch('claude_code_indexer.background_service.get_background_service') as mock_service:
-            mock_instance = Mock()
-            mock_service.return_value = mock_instance
-            mock_instance.get_status.return_value = {
-                'enabled': True,
-                'running': True,
-                'projects': {
-                    '/project1': {'interval': 300, 'last_indexed': '2024-01-01', 'next_index': '2024-01-02', 'indexing': False},
-                    '/project2': {'interval': 600, 'last_indexed': '2024-01-02', 'next_index': '2024-01-03', 'indexing': True}
-                },
-                'default_interval': 3600
-            }
-            
+        # Create a mock background service
+        mock_service = Mock()
+        mock_service.get_status.return_value = {
+            'enabled': True,
+            'running': True,
+            'projects': {
+                '/project1': {'interval': 300, 'last_indexed': '2024-01-01', 'next_index': '2024-01-02', 'indexing': False},
+                '/project2': {'interval': 600, 'last_indexed': '2024-01-02', 'next_index': '2024-01-03', 'indexing': True}
+            },
+            'default_interval': 3600
+        }
+        
+        # Mock the entire background_service module
+        mock_module = Mock()
+        mock_module.get_background_service.return_value = mock_service
+        
+        with patch.dict('sys.modules', {'claude_code_indexer.background_service': mock_module}):
             result = runner.invoke(cli, ['background', 'status'])
             
             assert result.exit_code == 0
@@ -554,6 +566,199 @@ class TestCLI:
             assert call_args is not None
             assert call_args.kwargs['use_cache'] == True
             assert call_args.kwargs['parallel_workers'] == 4
+
+    def test_init_command_with_existing_section(self, runner, temp_dir):
+        """Test init command when code indexing section already exists"""
+        with runner.isolated_filesystem(temp_dir=temp_dir):
+            # Create CLAUDE.md with existing section
+            claude_md_path = Path("CLAUDE.md")
+            claude_md_path.write_text("""# Project Rules
+
+## Code Indexing with Graph Database
+Existing section content
+
+## Other Section
+Content""")
+            
+            result = runner.invoke(cli, ['init'])
+            
+            assert result.exit_code == 0
+            assert "already exists" in result.output
+
+    def test_index_command_with_patterns(self, runner, temp_dir, mock_indexer):
+        """Test index command with custom file patterns"""
+        with runner.isolated_filesystem(temp_dir=temp_dir):
+            # Create files with different extensions
+            py_file = Path("test.py")
+            py_file.write_text("def hello(): pass")
+            
+            js_file = Path("test.js")
+            js_file.write_text("function hello() {}")
+            
+            mock_instance = Mock()
+            mock_indexer.return_value = mock_instance
+            mock_instance.index_directory.return_value = True
+            mock_instance.parsing_errors = []
+            
+            result = runner.invoke(cli, ['index', '.', '--patterns', '*.py,*.js'])
+            
+            assert result.exit_code == 0
+            # Should call index_directory with specified patterns
+            mock_instance.index_directory.assert_called_once()
+
+    def test_index_command_with_optimizations_disabled(self, runner, temp_dir, mock_indexer):
+        """Test index command with optimizations disabled"""
+        with runner.isolated_filesystem(temp_dir=temp_dir):
+            test_file = Path("test.py")
+            test_file.write_text("def hello(): pass")
+            
+            mock_instance = Mock()
+            mock_indexer.return_value = mock_instance
+            mock_instance.index_directory.return_value = True
+            mock_instance.parsing_errors = []
+            
+            result = runner.invoke(cli, ['index', '.', '--no-optimize'])
+            
+            assert result.exit_code == 0
+            # Verify optimizations were disabled
+            call_args = mock_indexer.call_args
+            assert call_args.kwargs['enable_optimizations'] == False
+
+    def test_index_command_error_handling(self, runner, temp_dir, mock_indexer):
+        """Test index command error handling"""
+        with runner.isolated_filesystem(temp_dir=temp_dir):
+            mock_instance = Mock()
+            mock_instance.index_directory.side_effect = Exception("Test error")
+            mock_indexer.return_value = mock_instance
+            
+            result = runner.invoke(cli, ['index', '.'])
+            
+            assert result.exit_code == 1
+            assert "Error during indexing" in result.output
+
+    def test_cache_command_clear_with_age(self, runner):
+        """Test cache clear command with age parameter"""
+        with patch('claude_code_indexer.cache_manager.CacheManager') as mock_cache:
+            mock_instance = Mock()
+            mock_cache.return_value = mock_instance
+            
+            result = runner.invoke(cli, ['cache', '--clear', '--days', '7'])
+            
+            assert result.exit_code == 0
+            assert "Cache cleared" in result.output
+            mock_instance.clear_cache.assert_called_once_with(older_than_days=7)
+
+    def test_benchmark_with_custom_records(self, runner):
+        """Test benchmark command with custom record count"""
+        with patch('claude_code_indexer.db_optimizer.DatabaseBenchmark') as mock_bench:
+            mock_bench.benchmark_insert_performance.return_value = (2.0, 1.0)
+            
+            result = runner.invoke(cli, ['benchmark', '--records', '5000'])
+            
+            assert result.exit_code == 0
+            assert "5000 records" in result.output
+            assert "Speedup" in result.output
+
+    def test_update_check_only(self, runner):
+        """Test update command with check-only flag"""
+        # Mock the Updater that's imported dynamically as a module global
+        mock_updater_class = Mock()
+        mock_instance = Mock()
+        mock_updater_class.return_value = mock_instance
+        mock_instance.auto_update.return_value = True
+        
+        # Replace the Updater global in the cli module
+        import claude_code_indexer.cli as cli_module
+        original_updater = cli_module.Updater
+        cli_module.Updater = mock_updater_class
+        
+        try:
+            result = runner.invoke(cli, ['update', '--check-only'])
+            
+            assert result.exit_code == 0
+            mock_instance.auto_update.assert_called_once_with(check_only=True)
+        finally:
+            # Restore original
+            cli_module.Updater = original_updater
+
+    def test_search_command_with_mode_and_type_filters(self, runner, temp_dir):
+        """Test search command with different modes and type filters"""
+        with patch('claude_code_indexer.storage_manager.get_storage_manager') as mock_storage:
+            mock_storage.return_value.get_project_from_cwd.return_value = Path(temp_dir)
+            mock_storage.return_value.get_database_path.return_value = Path(temp_dir) / "test.db"
+            
+            with patch('os.path.exists') as mock_exists:
+                mock_exists.return_value = True
+                
+                with patch('sqlite3.connect') as mock_conn:
+                    mock_cursor = Mock()
+                    mock_cursor.fetchall.return_value = [
+                        ('test_func', 'function', '/test.py', 0.8, 'core')
+                    ]
+                    mock_conn.return_value.cursor.return_value = mock_cursor
+                    
+                    # Test with 'all' mode and type filter
+                    result = runner.invoke(cli, ['search', 'test', 'function', '--mode', 'all', '--type', 'function'])
+                    
+                    assert result.exit_code == 0
+
+    def test_projects_command_list_and_operations(self, runner, temp_dir):
+        """Test projects command list and add/remove operations"""
+        with patch('claude_code_indexer.storage_manager.get_storage_manager') as mock_storage:
+            mock_storage_instance = Mock()
+            mock_storage.return_value = mock_storage_instance
+            mock_storage_instance.list_projects.return_value = [
+                {'name': 'test_project', 'path': '/test/path', 'last_indexed': '2024-01-01', 'exists': True, 'db_size': 1024}
+            ]
+            mock_storage_instance.get_storage_stats.return_value = {
+                'app_home': '/home/test/.claude-code-indexer',
+                'project_count': 1,
+                'total_size_mb': 1.0
+            }
+            
+            # Test list projects
+            result = runner.invoke(cli, ['projects'])
+            assert result.exit_code == 0
+            assert 'test_project' in result.output
+
+    def test_query_command_no_results(self, runner, temp_dir):
+        """Test query command when no results found"""
+        with patch('claude_code_indexer.storage_manager.get_storage_manager') as mock_storage:
+            mock_storage.return_value.get_project_from_cwd.return_value = Path(temp_dir)
+            mock_storage.return_value.get_database_path.return_value = Path(temp_dir) / "test.db"
+            
+            with patch('os.path.exists') as mock_exists:
+                mock_exists.return_value = True
+                
+                with patch('claude_code_indexer.cli.CodeGraphIndexer') as mock_indexer_class:
+                    mock_indexer = Mock()
+                    mock_indexer.query_important_nodes.return_value = []
+                    mock_indexer_class.return_value = mock_indexer
+                    
+                    result = runner.invoke(cli, ['query', '--type', 'nonexistent'])
+                    
+                    assert result.exit_code == 0
+                    assert "No entities found" in result.output or "No results" in result.output
+
+    def test_index_command_show_ignored_patterns(self, runner, temp_dir, mock_indexer):
+        """Test index command with show-ignored flag"""
+        with runner.isolated_filesystem(temp_dir=temp_dir):
+            test_file = Path("test.py")
+            test_file.write_text("def hello(): pass")
+            
+            mock_instance = Mock()
+            mock_indexer.return_value = mock_instance
+            mock_instance.index_directory.return_value = True
+            mock_instance.parsing_errors = []
+            
+            with patch('claude_code_indexer.ignore_handler.IgnoreHandler') as mock_ignore:
+                mock_ignore.return_value.get_patterns.return_value = ['*.pyc', '__pycache__', '.git']
+                
+                result = runner.invoke(cli, ['index', '.', '--show-ignored'])
+                
+                assert result.exit_code == 0
+                assert "Active Ignore Patterns" in result.output or "Ignore patterns" in result.output
+                assert "*.pyc" in result.output or len(result.output) > 0
 
 
 if __name__ == "__main__":

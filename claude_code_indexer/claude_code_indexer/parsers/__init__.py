@@ -3,11 +3,27 @@
 Parser system for Multi-Language Code Indexing
 """
 
-from .base_parser import BaseParser, CompositeParser, CodeNode, CodeRelationship, ParseResult
-from .python_parser import PythonParser
-from .javascript_parser import JavaScriptParser
-from .java_parser import JavaParser
-from .autoit_parser import AutoItParser
+import sys
+import os
+
+# Ensure the module can be found when running from installed script
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+if _current_dir not in sys.path:
+    sys.path.insert(0, _current_dir)
+
+try:
+    from .base_parser import BaseParser, CompositeParser, CodeNode, CodeRelationship, ParseResult
+    from .python_parser import PythonParser
+    from .javascript_parser import JavaScriptParser
+    from .java_parser import JavaParser
+    from .autoit_parser import AutoItParser
+except ImportError:
+    # Fallback to direct import if relative import fails
+    from base_parser import BaseParser, CompositeParser, CodeNode, CodeRelationship, ParseResult
+    from python_parser import PythonParser
+    from javascript_parser import JavaScriptParser
+    from java_parser import JavaParser
+    from autoit_parser import AutoItParser
 
 __all__ = [
     'BaseParser',

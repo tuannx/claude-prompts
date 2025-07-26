@@ -1,0 +1,7 @@
+{
+  "type": "god_mode_proxy_request",
+  "task": "test task",
+  "agent": "general-purpose",
+  "timestamp": "2025-07-26T11:19:03.185127",
+  "instructions": "Please execute this task using available MCP tools and return results"
+}

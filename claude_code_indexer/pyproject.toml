@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claude-code-indexer"
-version = "1.21.3"
+version = "1.21.6"
 description = "Multi-language code indexing with graph database, supports Python/JavaScript/TypeScript/Java/AutoIt, auto-ignores node_modules/.git, respects .gitignore, multi-keyword search, MCP for Claude Desktop, automated installation"
 readme = "README.md"
 license = {text = "MIT"}
@@ -84,12 +84,15 @@ mcp = [
     "aiohttp>=3.9.0",
 ]
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["claude_code_indexer*"]
+
 [tool.setuptools]
-packages = ["claude_code_indexer", "claude_code_indexer.templates", "claude_code_indexer.parsers"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-claude_code_indexer = ["templates/*.md", "templates/*.sql"]
+claude_code_indexer = ["templates/*.md", "templates/*.sql", "**/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

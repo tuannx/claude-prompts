@@ -15,11 +15,21 @@ gh issue close <number> --comment "Done"
 2. Plan → issue comments
 3. Verify plan (SKIP if !!!)
 4. Execute & update issue
-5. Minimal changes only
-6. Close issue
+5. **TEST AFTER CHANGES**: Run tests & update test cases
+6. Minimal changes only
+7. Close issue
+
+## Testing Protocol 🧪
+After EVERY code change:
+1. Run relevant tests: `pytest tests/test_file.py -v`
+2. Update test cases if behavior changed
+3. Add new tests for new features
+4. Fix any test failures before proceeding
+5. Run full test suite before major commits
 
 ## Principles
 - **SEARCH FIRST**: Always search before adding/deleting
+- **TEST ALWAYS**: Run tests after every change
 - Small files
 - One file at a time
 - Minimal changes

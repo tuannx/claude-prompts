@@ -761,6 +761,14 @@ class CodeGraphIndexer:
         for node_id, weighted_node in weighted_nodes.items():
             self.nodes[node_id].update(weighted_node)
         
+        # Update edges with weighted edges
+        if weighted_edges:
+            log_info(f"   📊 Updating {len(weighted_edges)} weighted edges...")
+            self.edges = [(int(edge.source), int(edge.target), edge.relationship_type) 
+                          for edge in weighted_edges]
+        else:
+            log_info(f"   ⚠️  No weighted edges returned, keeping original {len(self.edges)} edges")
+        
         log_info("💾 Saving to database...")
         if not self.save_to_db():
             log_error("❌ Failed to save data to database")

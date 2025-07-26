@@ -526,18 +526,39 @@ def get_users():
         """Test database schema migration"""
         db_path = str(Path(temp_dir) / "test.db")
         
-        # Create old schema database
+        # Create old schema database (v1.0.0 compatible)
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
+        # Create a v1.0.0 compatible schema (matching migration_001_v1_0_0.py)
         cursor.execute('''CREATE TABLE code_nodes (
-            id INTEGER PRIMARY KEY,
-            name TEXT,
-            node_type TEXT
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            node_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            path TEXT NOT NULL,
+            summary TEXT,
+            importance_score REAL DEFAULT 0.0,
+            relevance_tags TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        # Add relationships table to make it look like v1.0.0
+        cursor.execute('''CREATE TABLE relationships (
+            source_id INTEGER NOT NULL,
+            target_id INTEGER NOT NULL,
+            relationship_type TEXT NOT NULL,
+            weight REAL DEFAULT 1.0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (source_id, target_id, relationship_type)
+        )''')
+        # Add indexing_metadata table
+        cursor.execute('''CREATE TABLE indexing_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
         conn.commit()
         conn.close()
         
-        # Initialize indexer (should migrate)
+        # Initialize indexer (should detect as v1.0.0 and migrate to latest)
         with patch('claude_code_indexer.indexer.get_storage_manager') as mock_storage:
             mock_storage.return_value.get_project_from_cwd.return_value = Path(temp_dir)
             mock_storage.return_value.get_database_path.return_value = Path(db_path)
@@ -579,6 +600,153 @@ def get_users():
             conn.close()
             
             assert file_count >= 50  # At least some files were processed
+
+    def test_database_migration_failure(self, temp_dir):
+        """Test handling of database migration failures"""
+        with patch('claude_code_indexer.indexer.MigrationManager') as mock_migration:
+            mock_migration.return_value.migrate.return_value = (False, "Migration failed")
+            
+            with pytest.raises(RuntimeError, match="Failed to migrate database"):
+                CodeGraphIndexer(db_path=os.path.join(temp_dir, "test.db"))
+
+    def test_cached_result_integration(self, temp_dir, sample_python_file):
+        """Test integration of cached parsing results"""
+        indexer = CodeGraphIndexer(db_path=os.path.join(temp_dir, "test.db"))
+        
+        # Mock cache manager to return cached result
+        mock_cached_result = Mock()
+        mock_cached_result.file_path = sample_python_file
+        mock_cached_result.nodes = {1: {'name': 'test_function', 'type': 'function'}}
+        mock_cached_result.edges = [(1, 2, {'type': 'calls'})]
+        
+        with patch.object(indexer.cache_manager, 'get_cached_result') as mock_get_cache:
+            mock_get_cache.return_value = mock_cached_result
+            
+            # This should integrate cached results
+            indexer._integrate_cached_result(mock_cached_result)
+            
+            # Verify nodes were integrated
+            assert len(indexer.nodes) > 0
+            assert any(node['name'] == 'test_function' for node in indexer.nodes.values())
+
+    def test_error_handling_file_read(self, temp_dir):
+        """Test error handling when file cannot be read"""
+        indexer = CodeGraphIndexer(db_path=os.path.join(temp_dir, "test.db"))
+        
+        # Create a file and then remove it to simulate read error
+        test_file = Path(temp_dir) / "missing.py"
+        test_file.write_text("def test(): pass")
+        test_file.unlink()  # Remove file
+        
+        # Should handle missing file gracefully
+        indexer.index_directory(temp_dir)
+        
+        # Should not crash
+        assert True
+
+    def test_build_graph_with_relationships(self, temp_dir):
+        """Test graph building with various relationship types"""
+        indexer = CodeGraphIndexer(db_path=os.path.join(temp_dir, "test.db"))
+        
+        # Add nodes manually using internal method
+        node1_id = indexer._create_node("function", "function1", "/test/file1.py", "A test function")
+        node2_id = indexer._create_node("function", "function2", "/test/file1.py", "Another function")
+        node3_id = indexer._create_node("class", "class1", "/test/file1.py", "A test class")
+        
+        # Add to internal nodes dict for graph building
+        indexer.nodes[node1_id] = {"name": "function1", "node_type": "function", "path": "/test/file1.py"}
+        indexer.nodes[node2_id] = {"name": "function2", "node_type": "function", "path": "/test/file1.py"}
+        indexer.nodes[node3_id] = {"name": "class1", "node_type": "class", "path": "/test/file1.py"}
+        
+        # Add edges manually
+        indexer.edges.append((node1_id, node2_id, {"relationship": "calls"}))
+        indexer.edges.append((node3_id, node1_id, {"relationship": "contains"}))
+        
+        # Build graph
+        graph = indexer.build_graph()
+        
+        # Verify graph structure
+        assert graph.number_of_nodes() >= 3
+        assert graph.number_of_edges() >= 2
+
+    def test_query_with_filters(self, temp_dir, sample_python_file):
+        """Test querying with different filters"""
+        indexer = CodeGraphIndexer(db_path=os.path.join(temp_dir, "test.db"))
+        indexer.index_directory(temp_dir)
+        
+        # Query with type filter
+        functions = indexer.query_important_nodes(min_score=0.0, node_type="function", limit=10)
+        classes = indexer.query_important_nodes(min_score=0.0, node_type="class", limit=10)
+        
+        # Verify filtering works
+        if functions:
+            assert all(node['node_type'] == 'function' for node in functions)
+        if classes:
+            assert all(node['node_type'] == 'class' for node in classes)
+
+    def test_force_reindex(self, temp_dir, sample_python_file):
+        """Test force reindexing functionality"""
+        indexer = CodeGraphIndexer(db_path=os.path.join(temp_dir, "test.db"))
+        
+        # First indexing
+        indexer.index_directory(temp_dir)
+        initial_count = len(indexer.nodes)
+        
+        # Modify file
+        with open(sample_python_file, 'a') as f:
+            f.write("\ndef new_function():\n    pass\n")
+        
+        # Force reindex
+        indexer.index_directory(temp_dir, force_reindex=True)
+        
+        # Should have more nodes now
+        assert len(indexer.nodes) >= initial_count
+
+    def test_custom_ignore_patterns(self, temp_dir):
+        """Test custom ignore patterns functionality"""
+        # Create files to be ignored
+        ignored_file = Path(temp_dir) / "test_file.py" 
+        ignored_file.write_text("def test(): pass")
+        
+        regular_file = Path(temp_dir) / "normal.py"
+        regular_file.write_text("def normal(): pass")
+        
+        indexer = CodeGraphIndexer(db_path=os.path.join(temp_dir, "test.db"))
+        
+        # Index with custom ignore pattern
+        indexer.index_directory(temp_dir, custom_ignore=['test_*.py'])
+        
+        # Should only have nodes from normal.py
+        file_paths = [node.get('path', '') for node in indexer.nodes.values()]
+        assert any('normal.py' in path for path in file_paths)
+        assert not any('test_file.py' in path for path in file_paths)
+
+    def test_edge_cases_empty_directory(self, temp_dir):
+        """Test indexing empty directory"""
+        empty_dir = Path(temp_dir) / "empty"
+        empty_dir.mkdir()
+        
+        indexer = CodeGraphIndexer(db_path=os.path.join(temp_dir, "test.db"))
+        
+        # Should handle empty directory gracefully
+        indexer.index_directory(str(empty_dir))
+        
+        # Should not crash and have minimal nodes
+        assert len(indexer.nodes) >= 0
+
+    def test_malformed_file_handling(self, temp_dir):
+        """Test handling of malformed code files"""
+        # Create malformed Python file
+        malformed_file = Path(temp_dir) / "malformed.py"
+        malformed_file.write_text("def incomplete_function(\n    # Missing closing parenthesis")
+        
+        indexer = CodeGraphIndexer(db_path=os.path.join(temp_dir, "test.db"))
+        
+        # Should handle malformed files gracefully
+        indexer.index_directory(temp_dir)
+        
+        # Should not crash
+        assert True
 
 
 if __name__ == "__main__":

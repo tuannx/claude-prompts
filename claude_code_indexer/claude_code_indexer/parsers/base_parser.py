@@ -9,6 +9,13 @@ from typing import Dict, List, Optional, Any, Set
 from dataclasses import dataclass
 from pathlib import Path
 
+try:
+    from ..interfaces.parser_interface import IParser
+except ImportError:
+    # Fallback for backward compatibility
+    class IParser(ABC):
+        pass
+
 @dataclass
 class CodeNode:
     """Represents a code entity (class, function, variable, etc.)"""
@@ -59,7 +66,7 @@ class ParseResult:
         if self.relationships is None:
             self.relationships = []
 
-class BaseParser(ABC):
+class BaseParser(IParser):
     """
     Abstract base class for all language parsers
     Part of Composite Pattern - Component interface
