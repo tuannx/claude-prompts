@@ -17,6 +17,7 @@ try:
     from .javascript_parser import JavaScriptParser
     from .java_parser import JavaParser
     from .autoit_parser import AutoItParser
+    from .rust_parser import RustParser
 except ImportError:
     # Fallback to direct import if relative import fails
     from base_parser import BaseParser, CompositeParser, CodeNode, CodeRelationship, ParseResult
@@ -24,6 +25,7 @@ except ImportError:
     from javascript_parser import JavaScriptParser
     from java_parser import JavaParser
     from autoit_parser import AutoItParser
+    from rust_parser import RustParser
 
 __all__ = [
     'BaseParser',
@@ -35,6 +37,7 @@ __all__ = [
     'JavaScriptParser',
     'JavaParser',
     'AutoItParser',
+    'RustParser',
     'create_default_parser',
     'get_supported_extensions'
 ]
@@ -48,6 +51,7 @@ def create_default_parser() -> CompositeParser:
     composite.add_parser(JavaScriptParser())
     composite.add_parser(JavaParser())
     composite.add_parser(AutoItParser())
+    composite.add_parser(RustParser())
     
     return composite
 

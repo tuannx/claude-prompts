@@ -78,7 +78,8 @@ class LanguageDetector:
                 name='Rust',
                 extensions=['.rs'],
                 comment_styles=['//', '/*'],
-                keywords=['fn', 'struct', 'enum', 'impl', 'trait', 'use', 'mod', 'if', 'else', 'for', 'while', 'match']
+                keywords=['fn', 'struct', 'enum', 'impl', 'trait', 'use', 'mod', 'if', 'else', 'for', 'while', 'match'],
+                parser_available=True
             ),
             'ruby': LanguageInfo(
                 name='Ruby',

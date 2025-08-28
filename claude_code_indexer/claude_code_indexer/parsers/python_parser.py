@@ -31,17 +31,6 @@ class PythonParser(BaseParser):
         return self.supported_extensions
     
     def parse_file(self, file_path: str) -> ParseResult:
-        """Parse a Python file and return nodes and relationships"""
-        if self._is_binary_file(file_path):
-            return ParseResult(
-                file_path=file_path,
-                language=self.language,
-                nodes={},
-                relationships=[],
-                success=False,
-                error_message="Binary file detected"
-            )
-        
         content = self._read_file_safely(file_path)
         if content is None:
             return ParseResult(
@@ -51,17 +40,6 @@ class PythonParser(BaseParser):
                 relationships=[],
                 success=False,
                 error_message="Could not read file"
-            )
-        
-        # Check for null bytes (binary files)
-        if '\\x00' in content:
-            return ParseResult(
-                file_path=file_path,
-                language=self.language,
-                nodes={},
-                relationships=[],
-                success=False,
-                error_message="Binary file detected"
             )
         
         try:

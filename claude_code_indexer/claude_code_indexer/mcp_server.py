@@ -30,6 +30,9 @@ from .parallel_processor import ParallelFileProcessor
 from .storage_manager import get_storage_manager
 from .llm_memory_storage import LLMMemoryStorage
 from .pattern_memory_manager import PatternMemoryManager, PatternType, BestPracticeCategory
+# Feedback and error tracking modules removed during cleanup
+# from .feedback_tool import get_feedback_client, FeedbackType, FeedbackPriority
+# from .error_tracker import get_error_tracker, auto_track_errors
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -146,9 +149,9 @@ def get_project_stats(project_path: str) -> str:
     Returns:
         Formatted statistics about the indexed codebase
     """
-    # Validate project path
-    project_path = os.path.abspath(os.path.expanduser(project_path))
-    project_dir = project_manager.storage.get_project_dir(Path(project_path))
+    # Validate project path - use Path.resolve() for consistency with storage_manager
+    project_path = Path(os.path.expanduser(project_path)).resolve()
+    project_dir = project_manager.storage.get_project_dir(project_path)
     db_path = project_dir / "code_index.db"
     
     if not db_path.exists():
@@ -203,9 +206,9 @@ def query_important_code(project_path: str, limit: int = 20, node_type: Optional
     Returns:
         List of most important code entities with scores and tags
     """
-    # Validate project path
-    project_path = os.path.abspath(os.path.expanduser(project_path))
-    project_dir = project_manager.storage.get_project_dir(Path(project_path))
+    # Validate project path - use Path.resolve() for consistency with storage_manager
+    project_path = Path(os.path.expanduser(project_path)).resolve()
+    project_dir = project_manager.storage.get_project_dir(project_path)
     db_path = project_dir / "code_index.db"
     
     if not db_path.exists():
@@ -266,20 +269,29 @@ def search_code(project_path: str, terms: str, limit: int = 10, mode: str = "any
         search_code("/path/to/project", "auth user", mode="any")  # Match ANY keyword
         search_code("/path/to/project", "database connection", mode="all")  # Match ALL keywords
     """
-    # Validate project path
-    project_path = os.path.abspath(os.path.expanduser(project_path))
-    project_dir = project_manager.storage.get_project_dir(Path(project_path))
+    # Validate project path - use Path.resolve() for consistency with storage_manager
+    project_path = Path(os.path.expanduser(project_path)).resolve()
+    project_dir = project_manager.storage.get_project_dir(project_path)
     db_path = str(project_dir / "code_index.db")
     
     if not os.path.exists(db_path):
         return f"❌ No indexed data found for project: {project_path}\nRun index_codebase first."
     
-    indexer = project_manager.get_indexer(project_path)
+    indexer = project_manager.get_indexer(str(project_path))
     
     # Parse multiple keywords
     keywords = terms.strip().split()
     if not keywords:
         return "❌ No search terms provided"
+    
+    # Validate keywords to prevent SQL injection
+    for keyword in keywords:
+        # Check for SQL injection patterns
+        if any(dangerous in keyword.upper() for dangerous in ['DROP', 'DELETE', 'INSERT', 'UPDATE', 'ALTER', 'CREATE', 'EXEC', 'EXECUTE', '--', ';', '/*', '*/']):
+            return f"❌ Invalid search term detected: '{keyword}'. Please use alphanumeric characters only."
+        # Limit keyword length to prevent buffer overflow attacks
+        if len(keyword) > 100:
+            return f"❌ Search term too long: '{keyword}'. Maximum 100 characters per term."
     
     # Check cache first
     cache_key = f"search:{project_path}:{terms}:{mode}:{limit}:{use_fts}"
@@ -301,13 +313,24 @@ def search_code(project_path: str, terms: str, limit: int = 10, mode: str = "any
     
     # Build query based on FTS5 availability and mode
     if has_fts and use_fts:
+        # Escape special characters for FTS5
+        def escape_fts_term(term):
+            """Escape special characters in FTS5 search terms"""
+            # Escape double quotes and special FTS5 operators
+            term = term.replace('"', '""')
+            # Wrap in quotes to treat as literal if it contains special chars
+            if any(c in term for c in ['OR', 'AND', 'NOT', '-', '+', '*', '(', ')', ':']):
+                return f'"{term}"'
+            return f'"{term}"'  # Always quote for safety
+        
         # Use FTS5 for faster search
+        escaped_keywords = [escape_fts_term(k) for k in keywords]
         if mode == 'any':
             # OR logic - match any keyword
-            fts_query = " OR ".join(keywords)
+            fts_query = " OR ".join(escaped_keywords)
         else:
             # AND logic - must match all keywords
-            fts_query = " AND ".join(keywords)
+            fts_query = " AND ".join(escaped_keywords)
         
         query = """
             SELECT cn.* FROM code_nodes cn
@@ -1582,6 +1605,236 @@ def get_project_standards_summary(project_path: str) -> str:
         
     except Exception as e:
         return f"❌ Failed to get project standards summary: {str(e)}"
+
+
+@mcp.tool()
+def submit_feedback(
+    title: str,
+    description: str,
+    feedback_type: str = "improvement",
+    priority: str = "medium",
+    tool_name: str = "claude-code-indexer",
+    context: Optional[str] = None
+) -> str:
+    """Submit feedback or feature request for tools.
+    
+    Args:
+        title: Short title describing the feedback
+        description: Detailed description of the issue or request
+        feedback_type: Type - bug, feature, improvement, question, praise (default: improvement)
+        priority: Priority - low, medium, high, critical (default: medium)
+        tool_name: Name of the tool (default: claude-code-indexer)
+        context: Additional context as JSON string (optional)
+    
+    Returns:
+        Confirmation message with feedback ID
+    
+    Examples:
+        submit_feedback("Search needs escaping", "FTS5 queries fail with special chars", "bug", "high")
+        submit_feedback("Add export feature", "Need ability to export index to JSON", "feature")
+    """
+    try:
+        # Parse context if provided
+        context_dict = {}
+        if context:
+            try:
+                context_dict = json.loads(context)
+            except:
+                context_dict = {'raw_context': context}
+        
+        # Get feedback client
+        client = get_feedback_client()
+        
+        # Submit feedback
+        result = client.submit_feedback(
+            tool_name=tool_name,
+            title=title,
+            description=description,
+            feedback_type=feedback_type,
+            priority=priority,
+            context=context_dict
+        )
+        
+        if result['success']:
+            output = f"✅ Feedback submitted successfully!\n\n"
+            output += f"📝 ID: {result['feedback_id']}\n"
+            output += f"📌 Title: {title}\n"
+            output += f"🏷️ Type: {feedback_type}\n"
+            output += f"⚡ Priority: {priority}\n"
+            
+            if result.get('synced'):
+                output += f"☁️ Status: Synced to cloud\n"
+            else:
+                output += f"💾 Status: Saved locally (will sync later)\n"
+            
+            output += f"\nThank you for your feedback! It helps improve the tools."
+            return output
+        else:
+            return f"❌ Failed to submit feedback: {result.get('message', 'Unknown error')}"
+            
+    except Exception as e:
+        return f"❌ Error submitting feedback: {str(e)}"
+
+
+@mcp.tool()
+def list_feedback(project_path: Optional[str] = None, status: str = "all", limit: int = 10) -> str:
+    """List recent feedback submissions.
+    
+    Args:
+        project_path: Optional project path to filter feedback
+        status: Filter by status - all, new, reviewed, resolved (default: all)
+        limit: Maximum number of items to return (default: 10)
+    
+    Returns:
+        List of recent feedback items
+    """
+    try:
+        from .feedback_tool import LocalFeedbackStore
+        
+        # Get local feedback store
+        store = LocalFeedbackStore()
+        
+        # Query feedback
+        conn = sqlite3.connect(store.db_path)
+        cursor = conn.cursor()
+        
+        query = "SELECT * FROM feedback"
+        params = []
+        
+        conditions = []
+        if project_path:
+            conditions.append("tool_name = ?")
+            params.append(project_path)
+        
+        if status != "all":
+            conditions.append("status = ?")
+            params.append(status)
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        
+        cursor.execute(query, params)
+        
+        columns = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            return "ℹ️ No feedback found matching criteria."
+        
+        output = f"📋 Recent Feedback ({len(rows)} items)\n\n"
+        
+        for row in rows:
+            feedback = dict(zip(columns, row))
+            
+            # Parse context if it's JSON
+            if feedback.get('context'):
+                try:
+                    feedback['context'] = json.loads(feedback['context'])
+                except:
+                    pass
+            
+            # Format status emoji
+            status_emoji = {
+                'new': '🆕',
+                'reviewed': '👀',
+                'in_progress': '🔄',
+                'resolved': '✅',
+                'wont_fix': '❌'
+            }.get(feedback['status'], '❓')
+            
+            # Format priority color
+            priority_emoji = {
+                'low': '🟢',
+                'medium': '🟡',
+                'high': '🟠',
+                'critical': '🔴'
+            }.get(feedback['priority'], '⚪')
+            
+            output += f"{status_emoji} **{feedback['title']}**\n"
+            output += f"   ID: {feedback['id']}\n"
+            output += f"   Type: {feedback['feedback_type']} {priority_emoji} {feedback['priority']}\n"
+            output += f"   Tool: {feedback['tool_name']}\n"
+            
+            if feedback.get('description'):
+                desc_lines = feedback['description'].split('\n')
+                output += f"   Description: {desc_lines[0]}\n"
+                if len(desc_lines) > 1:
+                    output += f"   {'...(more)'}\n"
+            
+            output += f"   Date: {feedback['created_at']}\n"
+            
+            if feedback.get('synced'):
+                output += f"   ☁️ Synced\n"
+            else:
+                output += f"   💾 Local only\n"
+            
+            output += "\n"
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Error listing feedback: {str(e)}"
+
+
+@mcp.tool()
+def get_error_stats() -> str:
+    """Get statistics about tracked errors.
+    
+    Returns:
+        Summary of error tracking statistics
+    """
+    try:
+        tracker = get_error_tracker()
+        stats = tracker.get_error_stats()
+        
+        output = "📊 Error Tracking Statistics\n\n"
+        output += f"Total Errors Tracked: {stats['total_errors']}\n"
+        output += f"Unique Error Types: {stats['unique_errors']}\n"
+        output += f"Reported to GitHub: {stats['reported_to_github']}\n\n"
+        
+        if stats['most_common']:
+            output += "🔥 Most Common Errors:\n"
+            for i, error in enumerate(stats['most_common'], 1):
+                output += f"{i}. [{error['type']}] {error['message']}\n"
+                output += f"   Occurrences: {error['count']}\n\n"
+        
+        output += "\n💡 Errors are automatically reported to GitHub Issues for improvement."
+        output += "\n🔒 All sensitive data is sanitized before reporting."
+        
+        return output
+        
+    except Exception as e:
+        return f"❌ Error getting statistics: {str(e)}"
+
+
+@mcp.tool()
+def sync_feedback() -> str:
+    """Sync local feedback to cloud service.
+    
+    Returns:
+        Status of sync operation
+    """
+    try:
+        client = get_feedback_client()
+        result = client.sync_pending_feedback()
+        
+        if result['success']:
+            if result.get('synced_count', 0) > 0:
+                output = f"✅ Successfully synced feedback to cloud!\n\n"
+                output += f"📤 Synced: {result['synced_count']} items\n"
+                output += f"💬 Message: {result['message']}"
+            else:
+                output = "ℹ️ No pending feedback to sync."
+            return output
+        else:
+            return f"❌ Sync failed: {result.get('message', 'Unknown error')}"
+            
+    except Exception as e:
+        return f"❌ Error syncing feedback: {str(e)}"
 
 
 def main():

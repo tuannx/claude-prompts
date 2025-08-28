@@ -61,3 +61,33 @@ tasks/archive/
 !tasks/templates/*
 # Claude Code Indexer
 code_index.db
+
+# Claude Flow generated files
+.claude-flow/
+.swarm/
+.hive-mind/
+.mcp.json
+claude-flow
+claude-flow.bat
+claude-flow.config.json
+claude-flow.ps1
+memory/claude-flow-data.json
+memory/sessions/
+memory/agents/
+coordination/
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+
+# GOD Mode generated files
+.god-mode/
+.god_mode_state.json
+.god_mode_proxy_request.json
+.quick-dev/
+.roomodes
+
+# Auto-commit prevention
+auto_commit_*

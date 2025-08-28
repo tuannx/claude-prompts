@@ -7,6 +7,9 @@ import os
 import sys
 from pathlib import Path
 from typing import Optional, Any
+from datetime import datetime
+from rich.panel import Panel
+from rich.table import Table
 
 # Core imports with fallback
 try:
@@ -16,8 +19,20 @@ except ImportError:
     sys.exit(1)
 
 # Version info - always available
-__version__ = "1.21.6"
+__version__ = "1.24.2"
 __app_name__ = "Claude Code Indexer"
+
+# Import state manager for testing
+try:
+    from .state_manager import CodebaseStateManager
+except ImportError:
+    CodebaseStateManager = None
+
+# Import storage manager for testing
+try:
+    from .storage_manager import get_storage_manager
+except ImportError:
+    get_storage_manager = None
 
 # Safe import helper
 def safe_import(module_path: str, attribute: Optional[str] = None, fallback: Any = None) -> Any:
@@ -78,7 +93,9 @@ check_and_notify_update = safe_import('.updater', 'check_and_notify_update')
 validate_file_path = safe_import('.security', 'validate_file_path')
 SecurityError = safe_import('.security', 'SecurityError', Exception)
 suggest_github_issue = safe_import('.github_reporter', 'suggest_github_issue')
-god_mode_group = safe_import('.commands.god_mode', 'god_mode_group')
+# god_mode removed during cleanup
+# god_mode_group = safe_import('.commands.god_mode', 'god_mode_group')
+god_mode_group = None
 migrate_command = safe_import('.cli_migrate', 'migrate')
 install_crash_handler = safe_import('.crash_handler', 'install_crash_handler')
 crash_group = safe_import('.commands.crash', 'crash')
@@ -97,7 +114,7 @@ def get_code_graph_indexer():
                 # Try absolute import as fallback
                 from claude_code_indexer.indexer import CodeGraphIndexer as _CodeGraphIndexer
                 CodeGraphIndexer = _CodeGraphIndexer
-            except (ImportError, ModuleNotFoundError) as e2:
+            except (ImportError, ModuleNotFoundError, AttributeError) as e2:
                 # Check if we're in a test environment with mocked modules
                 if 'ensmallen' in sys.modules and sys.modules['ensmallen'] is None:
                     # This is a known issue in some test environments
@@ -116,6 +133,10 @@ def get_code_graph_indexer():
                     console.print(f"  Relative import error: {e1}")
                     console.print(f"  Absolute import error: {e2}")
                     console.print("Try reinstalling: pip install -e .")
+                    # Add more detailed error info
+                    import traceback
+                    console.print("\n[dim]Detailed error trace:[/dim]")
+                    traceback.print_exc()
                     sys.exit(1)
     return CodeGraphIndexer
 
@@ -285,7 +306,8 @@ def init(force):
 @click.option('--custom-ignore', multiple=True, help='Additional ignore patterns (can be used multiple times)')
 @click.option('--show-ignored', is_flag=True, help='Show what patterns are being ignored')
 @click.option('--verbose', is_flag=True, help='Show detailed parsing progress and errors')
-def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, custom_ignore, show_ignored, verbose):
+@click.option('--track-task', '-t', help='Associate indexing with a task description')
+def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, custom_ignore, show_ignored, verbose, track_task):
     """Index source code in the specified directory with performance optimizations
     
     🔍 Deep code analysis with:
@@ -293,6 +315,7 @@ def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, 
     - Graph relationship mapping (imports, calls, inheritance)
     - Importance scoring via PageRank algorithm
     - Smart caching (64.6x faster re-indexing)
+    - State tracking for task correlation
     
     💡 LLM Tip: Run this first to understand any codebase!
     
@@ -306,10 +329,24 @@ def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, 
         sys.exit(1)
     
     show_app_header()
+    
+    # Track task if specified
+    task_id = None
+    if track_task:
+        try:
+            if CodebaseStateManager is None:
+                raise ImportError("State manager not available")
+            manager = CodebaseStateManager(safe_path)
+            task_id = manager.track_task({"description": track_task})
+            console.print(f"[cyan]📋 Tracking task: {task_id} - {track_task}[/cyan]\n")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not track task: {e}[/yellow]\n")
+    
     console.print(f"📁 [bold blue]Indexing code in {safe_path}...[/bold blue]")
     
     # Check if indexer is available
-    if not CodeGraphIndexer:
+    _CodeGraphIndexer = get_code_graph_indexer()
+    if not _CodeGraphIndexer:
         console.print("[red]❌ Error: Indexer module not available[/red]")
         console.print("\n💡 Try these solutions:")
         console.print("1. Reinstall: pip install -e .")
@@ -403,7 +440,9 @@ def index(path, patterns, db, no_cache, force, workers, no_optimize, benchmark, 
 @click.option('--limit', default=20, help='Maximum number of results')
 @click.option('--db', default=None, help='Database file path (default: centralized storage)')
 @click.option('--project', help='Project name/path to query (default: current directory)')
-def query(important, type, limit, db, project):
+@click.option('--with-state', is_flag=True, help='Include state information in query')
+@click.option('--task-id', help='Show code related to specific task')
+def query(important, type, limit, db, project, with_state, task_id):
     """Query indexed code entities
     
     🎯 Perfect for LLMs to understand codebase structure!
@@ -412,10 +451,42 @@ def query(important, type, limit, db, project):
     - cci query --important     # Key components
     - cci query --type class    # All classes
     - cci query --limit 50      # Top 50 nodes
+    - cci query --with-state    # Include state info
+    - cci query --task-id xxx   # Task-specific code
     
     🐛 Report issues: https://github.com/tuannx/claude-prompts/issues
     """
     show_app_header()
+    
+    # Handle task-specific query
+    if task_id:
+        try:
+            if CodebaseStateManager is None:
+                raise ImportError("State manager not available")
+            manager = CodebaseStateManager(project or os.getcwd())
+            task = manager.get_task(task_id)
+            
+            if not task:
+                console.print(f"[red]❌ Task {task_id} not found[/red]")
+                sys.exit(1)
+            
+            console.print(Panel.fit(
+                f"[cyan]📋 Task: {task['description']}[/cyan]\n"
+                f"Status: {task['status']}\n"
+                f"Created: {task['created_at'][:19]}",
+                title="[bold]Task Information[/bold]"
+            ))
+            
+            if task.get('changes'):
+                changes = task['changes']
+                if changes.get('files_modified') or changes.get('files_added'):
+                    console.print("\n[yellow]Files affected by this task:[/yellow]")
+                    for file in changes.get('files_modified', [])[:10]:
+                        console.print(f"  📝 {file}")
+                    for file in changes.get('files_added', [])[:10]:
+                        console.print(f"  ➕ {file}")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not load task info: {e}[/yellow]")
     
     # Determine project path
     from .storage_manager import get_storage_manager
@@ -483,6 +554,29 @@ def query(important, type, limit, db, project):
         )
     
     console.print(table)
+    
+    # Show state information if requested
+    if with_state:
+        try:
+            if CodebaseStateManager is None:
+                raise ImportError("State manager not available")
+            manager = CodebaseStateManager(project_path)
+            state = manager.get_current_state()
+            
+            if state:
+                console.print("\n[cyan]📊 Codebase State:[/cyan]")
+                console.print(f"  Last captured: {state['timestamp'][:19]}")
+                console.print(f"  Total files: {state['stats']['total_files']}")
+                console.print(f"  Total lines: {state['stats']['total_lines']:,}")
+                
+                # Show active tasks
+                active_tasks = manager.get_active_tasks()
+                if active_tasks:
+                    console.print(f"\n[yellow]🔄 Active Tasks ({len(active_tasks)}):[/yellow]")
+                    for task in active_tasks[:3]:
+                        console.print(f"  • {task['id']}: {task['description'][:50]}")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not load state info: {e}[/yellow]")
 
 
 @cli.command()
@@ -947,7 +1041,6 @@ def projects(all):
         last_indexed = project.get('last_indexed', 'Never')
         if last_indexed and last_indexed != 'Never':
             # Format date nicely
-            from datetime import datetime
             dt = datetime.fromisoformat(last_indexed)
             last_indexed = dt.strftime('%Y-%m-%d %H:%M')
         
@@ -1448,6 +1541,192 @@ try:
 except ImportError:
     pass  # MCP daemon commands not available
 
+
+@cli.group()
+def state():
+    """Manage codebase state (single source of truth)."""
+    pass
+
+@state.command()
+@click.option('--project', '-p', help='Project path (default: current directory)')
+def capture(project):
+    """Capture current codebase state."""
+    if CodebaseStateManager is None:
+        click.secho("Error: State manager not available", fg="red")
+        return
+    
+    project_path = project or os.getcwd()
+    manager = CodebaseStateManager(project_path)
+    state = manager.capture_state()
+    
+    console.print(Panel.fit(
+        f"[green]✅ State captured[/green]\n\n"
+        f"📁 Project: {state['project_path']}\n"
+        f"🕐 Timestamp: {state['timestamp']}\n"
+        f"📊 Files: {state['stats']['total_files']}\n"
+        f"📝 Lines: {state['stats']['total_lines']:,}\n"
+        f"🔀 Git: {state['git']['branch']} @ {(state['git']['commit'] or 'N/A')[:8]}",
+        title="[bold cyan]Codebase State[/bold cyan]"
+    ))
+
+@state.command()
+@click.option('--task', '-t', required=True, help='Task description')
+@click.option('--project', '-p', help='Project path (default: current directory)')
+def begin(task, project):
+    """Begin tracking a new development task."""
+    if CodebaseStateManager is None:
+        click.secho("Error: State manager not available", fg="red")
+        return
+    
+    project_path = project or os.getcwd()
+    manager = CodebaseStateManager(project_path)
+    task_id = manager.track_task({"description": task})
+    
+    console.print(Panel.fit(
+        f"[green]✅ Task started[/green]\n\n"
+        f"📋 ID: {task_id}\n"
+        f"📝 Description: {task}\n"
+        f"⏱️ Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"[yellow]Remember to run '[bold]cci state complete --id {task_id}[/bold]' when done![/yellow]",
+        title="[bold cyan]Task Tracking[/bold cyan]"
+    ))
+
+@state.command()
+@click.option('--id', '-i', 'task_id', required=True, help='Task ID to complete')
+@click.option('--project', '-p', help='Project path (default: current directory)')
+def complete(task_id, project):
+    """Mark task as complete and capture changes."""
+    if CodebaseStateManager is None:
+        click.secho("Error: State manager not available", fg="red")
+        return
+    
+    project_path = project or os.getcwd()
+    manager = CodebaseStateManager(project_path)
+    
+    try:
+        changes = manager.complete_task(task_id)
+        
+        # Create summary table
+        table = Table(title="Task Changes Summary")
+        table.add_column("Change Type", style="cyan")
+        table.add_column("Count", style="green")
+        
+        table.add_row("Files Added", str(len(changes.get('files_added', []))))
+        table.add_row("Files Modified", str(len(changes.get('files_modified', []))))
+        table.add_row("Files Removed", str(len(changes.get('files_removed', []))))
+        
+        console.print(table)
+        console.print(f"\n[green]✅ Task {task_id} completed successfully![/green]")
+        
+    except ValueError as e:
+        console.print(f"[red]❌ Error: {e}[/red]")
+
+@state.command()
+@click.option('--project', '-p', help='Project path (default: current directory)')
+@click.option('--format', '-f', type=click.Choice(['simple', 'detailed']), default='simple')
+def diff(project, format):
+    """Show differences from last captured state."""
+    if CodebaseStateManager is None:
+        click.secho("Error: State manager not available", fg="red")
+        return
+    
+    project_path = project or os.getcwd()
+    manager = CodebaseStateManager(project_path)
+    diff_result = manager.diff_from_last()
+    
+    if not diff_result:
+        console.print("[yellow]No previous state to compare with[/yellow]")
+        return
+    
+    table = Table(title="State Differences")
+    table.add_column("Change Type", style="cyan")
+    table.add_column("Files", style="green")
+    
+    if diff_result['files_added']:
+        table.add_row("Added", ", ".join(diff_result['files_added'][:5]))
+    if diff_result['files_modified']:
+        table.add_row("Modified", ", ".join(diff_result['files_modified'][:5]))
+    if diff_result['files_removed']:
+        table.add_row("Removed", ", ".join(diff_result['files_removed'][:5]))
+    
+    console.print(table)
+
+@state.command()
+@click.option('--project', '-p', help='Project path (default: current directory)')
+@click.option('--limit', '-l', default=10, help='Number of tasks to show')
+def tasks(project, limit):
+    """List recent tasks and their status."""
+    if CodebaseStateManager is None:
+        click.secho("Error: State manager not available", fg="red")
+        return
+    
+    project_path = project or os.getcwd()
+    manager = CodebaseStateManager(project_path)
+    tasks = manager.get_task_history(limit)
+    
+    if not tasks:
+        console.print("[yellow]No tasks found[/yellow]")
+        return
+    
+    table = Table(title="Recent Tasks")
+    table.add_column("ID", style="cyan")
+    table.add_column("Description", style="white")
+    table.add_column("Status", style="green")
+    table.add_column("Created", style="yellow")
+    
+    for task in tasks:
+        status_color = "green" if task['status'] == 'completed' else "yellow"
+        table.add_row(
+            task['id'],
+            task['description'][:40] + ('...' if len(task['description']) > 40 else ''),
+            f"[{status_color}]{task['status']}[/{status_color}]",
+            task['created_at'][:19]
+        )
+    
+    console.print(table)
+
+@state.command()
+@click.option('--project', '-p', help='Project path (default: current directory)')
+@click.option('--format', '-f', type=click.Choice(['json', 'summary']), default='summary')
+def export(project, format):
+    """Export current state in specified format."""
+    if CodebaseStateManager is None:
+        click.secho("Error: State manager not available", fg="red")
+        return
+    
+    project_path = project or os.getcwd()
+    manager = CodebaseStateManager(project_path)
+    output = manager.export_state(format)
+    
+    if format == 'json':
+        # Write to file
+        filename = f"codebase_state_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        with open(filename, 'w') as f:
+            f.write(output)
+        console.print(f"[green]✅ State exported to {filename}[/green]")
+    else:
+        console.print(output)
+
+@state.command()
+@click.option('--project', '-p', help='Project path (default: current directory)')
+def validate(project):
+    """Validate current codebase state against saved state."""
+    if CodebaseStateManager is None:
+        click.secho("Error: State manager not available", fg="red")
+        return
+    
+    project_path = project or os.getcwd()
+    manager = CodebaseStateManager(project_path)
+    validation = manager.validate_state()
+    
+    if validation['valid']:
+        console.print("[green]✅ Codebase state is valid and consistent[/green]")
+    else:
+        console.print(f"[red]❌ State validation failed: {validation.get('reason', 'Unknown')}[/red]")
+        if validation.get('unexpected_changes'):
+            console.print("\n[yellow]Unexpected changes detected in:[/yellow]")
+            for file in validation['unexpected_changes'][:10]:
+                console.print(f"  - {file}")
 
 @cli.command()
 def doctor():

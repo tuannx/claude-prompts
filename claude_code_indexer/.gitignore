@@ -65,7 +65,11 @@ code_metrics.db
 *.db
 temp_edges.tsv
 temp_edges.csv
+benchmark_test.db*
 
 # Test files
 test_project/
 sample_code/test-env/
+
+# Worktrees
+worktrees/

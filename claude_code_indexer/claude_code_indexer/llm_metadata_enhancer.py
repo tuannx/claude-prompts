@@ -124,12 +124,16 @@ class LLMMetadataEnhancer:
             # Pattern detection table
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS detected_patterns (
-                id INTEGER PRIMARY KEY,
-                node_id INTEGER,
-                pattern_type TEXT,
-                confidence REAL,
-                details TEXT,  -- JSON
-                detected_at TIMESTAMP,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                node_id INTEGER NOT NULL,
+                pattern_type TEXT NOT NULL,
+                pattern_name TEXT,
+                confidence_score REAL,
+                implementation_details TEXT,
+                related_nodes TEXT,
+                best_practices TEXT,
+                potential_issues TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (node_id) REFERENCES code_nodes(id)
             )
             ''')
@@ -530,14 +534,13 @@ class LLMMetadataEnhancer:
                 cursor = conn.cursor()
                 cursor.execute('''
                 INSERT INTO detected_patterns 
-                (node_id, pattern_type, confidence, details, detected_at)
-                VALUES (?, ?, ?, ?, ?)
+                (node_id, pattern_type, confidence_score, implementation_details)
+                VALUES (?, ?, ?, ?)
                 ''', (
                     node_id,
                     pattern["pattern_type"],
-                    pattern["confidence"],
-                    json.dumps(pattern),
-                    time.strftime("%Y-%m-%d %H:%M:%S")
+                    pattern.get("confidence", 0.0),
+                    json.dumps(pattern)
                 ))
                 conn.commit()
     

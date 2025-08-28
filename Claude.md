@@ -48,3 +48,30 @@ claude-code-indexer query --important
 - `/cancel` = new session
 - `Shift+Tab` = plan mode
 - `gh issue` = task tracking
+
+## Performance Reporting Integrity 🚨
+**ABSOLUTE HONESTY IN ALL METRICS**
+
+When reporting performance or test results:
+1. **NEVER simulate and claim as real** - Use actual execution only
+2. **CLEARLY MARK simulations** - Add "SIMULATED" or "ESTIMATED" labels
+3. **MEASURE, don't predict** - Use `time.time()`, subprocess, real I/O
+4. **DISCLOSE limitations** - Be transparent about what wasn't tested
+5. **VERIFY before claiming** - Run actual code, don't assume
+
+### Example:
+```python
+# ✅ GOOD - Real measurement
+actual_time = time.time() - start
+print(f"MEASURED time: {actual_time}s")
+
+# ❌ BAD - Deceptive
+simulated = estimate_performance()
+print(f"Performance: {simulated}")  # Misleading!
+
+# ✅ GOOD - Honest disclosure
+estimate = calculate_estimate()
+print(f"ESTIMATED (not measured): {estimate}")
+```
+
+**Remember**: Trust is earned through transparency.

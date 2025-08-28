@@ -6,7 +6,7 @@ try:
     from importlib.metadata import version
     __version__ = version("claude-code-indexer")
 except:
-    __version__ = "1.21.6"
+    __version__ = "1.24.2"
 
 __app_name__ = "Claude Code Indexer"
 __author__ = "Tony Nguyen"
